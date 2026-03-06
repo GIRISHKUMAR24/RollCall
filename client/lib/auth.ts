@@ -21,6 +21,7 @@ export interface SignupRequest {
   roleSpecificId?: string; // rollNumber, teacherId, or adminCode
   branch?: string;
   section?: string;
+  phone?: string; // for students
 }
 
 export interface AuthError {

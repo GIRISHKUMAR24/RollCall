@@ -23,10 +23,12 @@ export async function handleSignup(req: Request, res: Response): Promise<void> {
       roleSpecificId,
       branch,
       section,
+      phone,
     }: SignupRequest & {
       roleSpecificId?: string;
       branch?: string;
       section?: string;
+      phone?: string;
     } = req.body;
 
     // Input validation
@@ -116,6 +118,14 @@ export async function handleSignup(req: Request, res: Response): Promise<void> {
       newUser.rollNumber = roleSpecificId;
       newUser.branch = branch.trim();
       newUser.section = section.trim();
+      if (!phone || !phone.trim()) {
+        res.status(400).json({
+          error: "Validation Error",
+          message: "Phone number is required for students",
+        } as ErrorResponse);
+        return;
+      }
+      newUser.phone = phone.trim();
     } else if (role === "teacher") {
       if (roleSpecificId) newUser.teacherId = roleSpecificId;
     } else if (role === "principal") {

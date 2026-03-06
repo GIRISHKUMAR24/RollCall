@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import LogoutButton from "@/components/LogoutButton";
 import { authHelpers } from "@/lib/auth";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -53,7 +54,10 @@ export default function StudentDashboard() {
                 <p className="text-sm text-gray-600">{userEmail}</p>
               </div>
             </div>
-            <LogoutButton className="hover:scale-105 hover:shadow-lg transition-all duration-300 dark:hover:bg-gray-700 dark:border-gray-600" />
+            <div className="flex items-center space-x-4">
+              <ThemeToggle />
+              <LogoutButton className="hover:scale-105 hover:shadow-lg transition-all duration-300 dark:hover:bg-gray-700 dark:border-gray-600" />
+            </div>
           </div>
         </div>
       </header>

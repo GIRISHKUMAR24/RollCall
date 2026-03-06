@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { emailService } from "../services/emailService";
-import { getCollection, getSettings } from "../database";
+import { getCollection } from "../database";
 
 interface SendEmailRequest {
   students: Array<{
@@ -45,20 +45,26 @@ export async function handleSendAttendanceEmails(
       return;
     }
 
-    // teacherLocation is passed in classDetails from the client
+    // teacherLocation is required — no fallback to DB settings
     const { teacherLocation } = classDetails;
 
     if (
       !teacherLocation ||
-      !teacherLocation.lat ||
-      !teacherLocation.lng
+      typeof teacherLocation.lat !== "number" ||
+      typeof teacherLocation.lng !== "number" ||
+      isNaN(teacherLocation.lat) ||
+      isNaN(teacherLocation.lng) ||
+      (teacherLocation.lat === 0 && teacherLocation.lng === 0)
     ) {
       res.status(400).json({
         error: "Validation Error",
-        message: "Teacher location coordinates are required",
+        message:
+          "Teacher GPS location is required and must be valid. " +
+          "Please capture your location on the Teacher Dashboard before sending QR codes.",
       });
       return;
     }
+
 
     // Validate email format for all students
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -105,7 +111,14 @@ export async function handleSendAttendanceEmails(
       return;
     }
 
-    // Persist session with authoritative teacherLocation for geofencing
+    // Persist session with authoritative classroomCenter for geofencing
+    // CRITICAL: The sessionId here matches what's embedded in the QR tokens.
+    // classroomCenter MUST be stored — this is what attendance.ts reads.
+    const geofenceRadius = parseInt(process.env.GEOFENCE_RADIUS_METERS || "30", 10);
+    const windowSeconds = parseInt(process.env.ATTENDANCE_WINDOW_SECONDS || "90", 10);
+    const sessionStartTime = new Date();
+    const sessionEndTime = new Date(sessionStartTime.getTime() + windowSeconds * 1000);
+
     const sessionsCol = getCollection("sessions");
     await sessionsCol.updateOne(
       { sessionId: result.sessionId },
@@ -115,12 +128,23 @@ export async function handleSendAttendanceEmails(
           branch: classDetails.branch,
           section: classDetails.section,
           subject: classDetails.subject,
-          teacherLocation: teacherLocation,
+          classroomCenter: {          // ← authoritative field read by attendance.ts
+            lat: teacherLocation.lat,
+            lng: teacherLocation.lng,
+          },
+          teacherLocation: teacherLocation, // backward-compat alias
+          radius: geofenceRadius,
+          startTime: sessionStartTime,
+          endTime: sessionEndTime,
+          active: true,
           createdAt: new Date(),
         },
       },
       { upsert: true },
     );
+
+    console.log(`✅ [Email Route] Session persisted: ${result.sessionId}`);
+    console.log(`   classroomCenter: (${teacherLocation.lat}, ${teacherLocation.lng}), radius: ${geofenceRadius}m`);
 
     res.status(200).json({
       success: true,

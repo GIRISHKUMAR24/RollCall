@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "0.0.0.0",
     port: 4000,
+    allowedHosts: true,
+    hmr: process.env.VITE_DISABLE_HMR === 'true' ? false : undefined,
     fs: {
       allow: ["./client", "./shared"],
       deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "server/**"],

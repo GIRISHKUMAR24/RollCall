@@ -25,3 +25,9 @@ dist-ssr
 
 .config/
 !.env
+
+# SSL Certificates (self-signed, generated locally — do not commit)
+certs/
+*.pem
+*.crt
+*.key

@@ -42,7 +42,9 @@ import {
   CheckCircle,
   XCircle,
   Search,
+  Loader2,
 } from "lucide-react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import {
   Table,
   TableBody,
@@ -113,6 +115,7 @@ export default function TeacherDashboard() {
   >({});
   const sendingRef = useRef(false);
   const finalizingRef = useRef(false);
+  const [overrideLoading, setOverrideLoading] = useState<string | null>(null);
 
   // Attendance summary dialog state
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -607,6 +610,49 @@ Solutions:
 
   // handleStartAttendance removed - using server-side permanent location
 
+  const handleManualOverride = async (rollNumber: string, currentStatus: string) => {
+    if (!currentSessionId) {
+      alert("No active session! Cannot override attendance without an active session.");
+      return;
+    }
+
+    const newStatus = currentStatus === "Present" ? "Absent" : "Present";
+    setOverrideLoading(rollNumber);
+
+    try {
+      const resp = await fetch(`${API_BASE}/attendance/override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: currentSessionId,
+          rollNumber,
+          status: newStatus,
+          teacherEmail: userEmail,
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        throw new Error(data?.message || "Failed to update attendance");
+      }
+
+      setAttendanceMap((prev) => ({
+        ...prev,
+        [rollNumber]: {
+          status: newStatus,
+          scanTime: new Date().toLocaleTimeString(),
+          geofenceStatus: "not_scanned"
+        }
+      }));
+
+      alert(`✅ Successfully marked ${rollNumber} as ${newStatus}.`);
+    } catch (e: any) {
+      alert(`❌ Error updating attendance: ${e.message}`);
+    } finally {
+      setOverrideLoading(null);
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -669,7 +715,10 @@ Solutions:
                 </p>
               </div>
             </div>
-            <LogoutButton className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm border-gray-200/50 dark:border-gray-600/50 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-300 dark:hover:border-red-700 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 shadow-md hover:shadow-lg" />
+            <div className="flex items-center space-x-4">
+              <ThemeToggle />
+              <LogoutButton className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm border-gray-200/50 dark:border-gray-600/50 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-300 dark:hover:border-red-700 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 shadow-md hover:shadow-lg" />
+            </div>
           </div>
         </div>
       </header>
@@ -1074,13 +1123,36 @@ Solutions:
                               {student.status}
                             </Badge>
                           </div>
-                          {isPresent ? (
-                            <CheckCircle className="w-5 h-5 text-green-600" />
-                          ) : isAbsent ? (
-                            <XCircle className="w-5 h-5 text-red-600" />
-                          ) : (
-                            <Clock className="w-5 h-5 text-gray-400" />
-                          )}
+                          <div className="flex items-center space-x-2 ml-4">
+                            {isPresent ? (
+                              <CheckCircle className="w-5 h-5 text-green-600" />
+                            ) : isAbsent ? (
+                              <XCircle className="w-5 h-5 text-red-600" />
+                            ) : (
+                              <Clock className="w-5 h-5 text-gray-400" />
+                            )}
+
+                            {currentSessionId && (
+                              <Button
+                                size="sm"
+                                variant={isPresent ? "outline" : "default"}
+                                className={`h-8 ${isPresent
+                                    ? "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800"
+                                    : "bg-green-600 hover:bg-green-700 text-white"
+                                  }`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleManualOverride(student.rollNo, student.status);
+                                }}
+                                disabled={overrideLoading === student.rollNo}
+                              >
+                                {overrideLoading === student.rollNo && (
+                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                )}
+                                {isPresent ? "Mark Absent" : "Mark Present"}
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )

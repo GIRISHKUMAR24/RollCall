@@ -7,6 +7,7 @@ export interface User {
   rollNumber?: string; // For students
   branch?: string; // For students
   section?: string; // For students
+  phone?: string; // For students
   teacherId?: string; // For teachers
   adminCode?: string; // For principals
 }
@@ -19,6 +20,7 @@ export interface SignupRequest {
   roleSpecificId?: string; // rollNumber, teacherId, or adminCode
   branch?: string; // for students
   section?: string; // for students
+  phone?: string; // for students
 }
 
 export interface SignupResponse {

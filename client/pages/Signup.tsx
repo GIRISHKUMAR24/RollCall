@@ -34,6 +34,7 @@ export default function Signup() {
   const [role, setRole] = useState("student");
   const [branch, setBranch] = useState("");
   const [section, setSection] = useState("");
+  const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -44,6 +45,7 @@ export default function Signup() {
     setRollNumber("");
     setBranch("");
     setSection("");
+    setPhone("");
   }, [role]);
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -67,8 +69,8 @@ export default function Signup() {
     }
 
     // Role-specific validation
-    if (role === "student" && (!rollNumber || !branch || !section)) {
-      setError("Roll number, Branch and Section are required for students");
+    if (role === "student" && (!rollNumber || !branch || !section || !phone)) {
+      setError("Roll number, Branch, Section and Phone number are required for students");
       setLoading(false);
       return;
     }
@@ -98,6 +100,7 @@ export default function Signup() {
         roleSpecificId: rollNumber.trim() || undefined,
         branch: role === "student" ? branch.trim() : undefined,
         section: role === "student" ? section.trim() : undefined,
+        phone: role === "student" ? phone.trim() : undefined,
       });
 
       setSuccess(`✅ Account created successfully! Welcome ${firstName}!`);
@@ -397,6 +400,20 @@ export default function Signup() {
                         className="h-11 bg-white/80 dark:bg-black/30 border-gray-200/60 dark:border-gray-600/60 dark:text-white backdrop-blur-sm hover:border-blue-400 dark:hover:border-cyan-400 focus:border-blue-500 dark:focus:border-cyan-500 transition-all duration-300 hover:shadow-md hover:bg-white/90 dark:hover:bg-black/40"
                       />
                     </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone" className="dark:text-gray-200">
+                      Phone Number
+                    </Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="Enter your phone number"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      required
+                      className="h-11 bg-white/80 dark:bg-black/30 border-gray-200/60 dark:border-gray-600/60 dark:text-white backdrop-blur-sm hover:border-blue-400 dark:hover:border-cyan-400 focus:border-blue-500 dark:focus:border-cyan-500 transition-all duration-300 hover:shadow-md hover:bg-white/90 dark:hover:bg-black/40"
+                    />
                   </div>
                 </>
               )}

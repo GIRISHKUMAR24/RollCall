@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/env";
 import {
@@ -59,6 +60,7 @@ type LocationState =
 interface DebugInfo {
   isSecureContext: boolean;
   origin: string;
+  protocol: string;
   lastErrorCode?: number;
   lastErrorMessage?: string;
   userAgent?: string;
@@ -94,6 +96,7 @@ export default function StudentQRScan() {
   const [debugInfo, setDebugInfo] = useState<DebugInfo>({
     isSecureContext: typeof window !== "undefined" ? window.isSecureContext : false,
     origin: typeof window !== "undefined" ? window.location.origin : "",
+    protocol: typeof window !== "undefined" ? window.location.protocol : "",
     userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
   });
 
@@ -141,6 +144,7 @@ export default function StudentQRScan() {
       ...prev,
       isSecureContext: window.isSecureContext,
       origin: window.location.origin,
+      protocol: window.location.protocol,
       lastErrorCode: undefined,
       lastErrorMessage: undefined,
     }));
@@ -148,7 +152,12 @@ export default function StudentQRScan() {
     // A. Check Secure Context
     if (!window.isSecureContext && window.location.hostname !== "localhost") {
       setLocationState("error");
-      setLocationErrorMsg("Location is blocked because this site is not using HTTPS. Please use https:// to enable location.");
+      setLocationErrorMsg(
+        "⚠️ You opened this page on HTTP (local network URL). " +
+        "GPS is blocked by your browser on HTTP. " +
+        "Please open the HTTPS link from your email instead " +
+        "(it starts with https://... not http://192.168...)."
+      );
       return;
     }
 
@@ -174,14 +183,19 @@ export default function StudentQRScan() {
 
     const geoOptions = {
       enableHighAccuracy: true,
-      timeout: 15000, // 15 seconds
-      maximumAge: 0
+      timeout: 30000, // Increased to 30 seconds
+      maximumAge: 10000 // Allow cached positions up to 10s old
     };
+
+    console.log("📍 [StudentQRScan] Requesting Geolocation with options:", geoOptions);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         // Success
+        console.log("✅ [StudentQRScan] Geolocation Success:", position);
         const { latitude, longitude, accuracy } = position.coords;
+        console.log(`📍 Coordinates: ${latitude}, ${longitude} (Accuracy: ${accuracy}m)`);
+
         setCurrentLocation({ lat: latitude, lng: longitude });
         setStudentAccuracy(accuracy);
         setLocationState("allowed");
@@ -189,13 +203,14 @@ export default function StudentQRScan() {
 
         // Retry if accuracy is poor (>50m) and we haven't retried too many times
         if (accuracy > 50 && retryCount < 3) {
-          console.log(`Accuracy ${accuracy}m > 50m, retrying (${retryCount + 1}/3)...`);
-          setTimeout(() => handleRetryLocation(retryCount + 1), 1000);
+          console.warn(`⚠️ Accuracy ${accuracy}m > 50m, retrying (${retryCount + 1}/3)...`);
+          // We still keep the current result, but try to get a better one
+          setTimeout(() => handleRetryLocation(retryCount + 1), 2000);
         }
       },
       (error) => {
         // Error Handling
-        console.error("Geolocation error:", error);
+        console.error("❌ [StudentQRScan] Geolocation Error:", error);
         setCurrentLocation(null);
 
         // Update debug info with error
@@ -208,14 +223,34 @@ export default function StudentQRScan() {
         if (error.code === error.PERMISSION_DENIED) {
           setLocationState("denied");
           setLocationErrorMsg(
-            "Location permission denied. Please allow location in mobile browser settings and tap Retry again."
+            "Location permission denied. Please allow location access in your browser settings."
           );
         } else if (error.code === error.POSITION_UNAVAILABLE) {
           setLocationState("error");
-          setLocationErrorMsg("Location unavailable. Please check your GPS settings.");
+          setLocationErrorMsg("Location unavailable. Please check your GPS is on.");
         } else if (error.code === error.TIMEOUT) {
-          setLocationState("error");
-          setLocationErrorMsg("Location request timed out. Check your internet/GPS and try again.");
+          console.warn("⚠️ Geolocation timed out. Retrying with low accuracy...");
+          // Fallback: Try again with low accuracy
+          if (retryCount === 0) {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                // Success on fallback
+                console.log("✅ [Fallback] Low Accuracy Success:", pos);
+                setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                setStudentAccuracy(pos.coords.accuracy);
+                setLocationState("allowed");
+                setLocationErrorMsg("");
+              },
+              (err) => {
+                setLocationState("error");
+                setLocationErrorMsg("Location timed out. Please check your internet/GPS.");
+              },
+              { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
+            );
+          } else {
+            setLocationState("error");
+            setLocationErrorMsg("Location request timed out.");
+          }
         } else {
           setLocationState("error");
           setLocationErrorMsg(`Unable to fetch your location. Error: ${error.message}`);
@@ -227,10 +262,9 @@ export default function StudentQRScan() {
 
   // 3. Submit Attendance
   const submitAttendance = async () => {
-    if (!studentData?.teacherLocation) {
-      setScanError("Teacher location not available. Please contact your teacher.");
-      return;
-    }
+    // NOTE: Teacher location is no longer required from the QR token.
+    // The backend fetches classroomCenter from the MongoDB session document.
+    // The student only needs to provide their own GPS coordinates.
 
     setScanning(true);
     setScanError(null);
@@ -338,6 +372,7 @@ export default function StudentQRScan() {
                 </p>
               </div>
             </div>
+            <ThemeToggle />
           </div>
         </div>
       </header>
@@ -497,11 +532,28 @@ export default function StudentQRScan() {
                   <Info className="w-3 h-3" />
                   <span className="font-bold">Debug Info</span>
                 </div>
-                <p>Secure Context: {debugInfo.isSecureContext ? "Yes" : "No"}</p>
-                <p>Origin: {debugInfo.origin}</p>
-                {debugInfo.lastErrorCode && <p>Last Error Code: {debugInfo.lastErrorCode}</p>}
-                {debugInfo.lastErrorMessage && <p>Last Error Msg: {debugInfo.lastErrorMessage}</p>}
-                <p className="truncate" title={debugInfo.userAgent}>UA: {debugInfo.userAgent?.substring(0, 50)}...</p>
+                {/* Secure Context Warning Banner */}
+                {!debugInfo.isSecureContext && window.location.hostname !== "localhost" && (
+                  <div className="mb-2 px-2 py-1 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded text-red-700 dark:text-red-300 text-xs font-semibold">
+                    ⚠️ Secure HTTPS connection required for location and camera access.
+                  </div>
+                )}
+                <p>
+                  <span className="text-gray-500 dark:text-gray-400">Secure Context: </span>
+                  <span className={debugInfo.isSecureContext ? "text-green-600 dark:text-green-400 font-bold" : "text-red-600 dark:text-red-400 font-bold"}>
+                    {debugInfo.isSecureContext ? "✓ Yes" : "✗ No"}
+                  </span>
+                </p>
+                <p>
+                  <span className="text-gray-500 dark:text-gray-400">Protocol: </span>
+                  <span className={debugInfo.protocol === "https:" ? "text-green-600 dark:text-green-400" : "text-orange-600 dark:text-orange-400"}>
+                    {debugInfo.protocol || "unknown"}
+                  </span>
+                </p>
+                <p><span className="text-gray-500 dark:text-gray-400">Origin: </span>{debugInfo.origin}</p>
+                {debugInfo.lastErrorCode && <p><span className="text-gray-500 dark:text-gray-400">Last Error Code: </span>{debugInfo.lastErrorCode}</p>}
+                {debugInfo.lastErrorMessage && <p><span className="text-gray-500 dark:text-gray-400">Last Error Msg: </span>{debugInfo.lastErrorMessage}</p>}
+                <p className="truncate" title={debugInfo.userAgent}><span className="text-gray-500 dark:text-gray-400">UA: </span>{debugInfo.userAgent?.substring(0, 50)}...</p>
               </div>
 
             </CardContent>
@@ -548,7 +600,7 @@ export default function StudentQRScan() {
                   )}
 
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-                    Make sure you're inside the 30m hexagonal zone
+                    Make sure you're inside the {scanResult?.debug?.radius ?? 30}m geofence zone
                   </p>
                 </div>
               )}
@@ -612,32 +664,62 @@ export default function StudentQRScan() {
                     {scanResult.debug && (
                       <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono text-left space-y-1 border border-gray-300 dark:border-gray-700">
                         <p className="font-bold border-b border-gray-300 dark:border-gray-600 pb-1 mb-1">
-                          🛠️ Debug Info
+                          🛠️ Geofence Debug
                         </p>
                         <p>
-                          <span className="font-semibold">Class:</span>{" "}
-                          {scanResult.debug.classLocation?.lat.toFixed(6)},{" "}
-                          {scanResult.debug.classLocation?.lng.toFixed(6)}
+                          <span className="font-semibold">Teacher (Session):</span>{" "}
+                          {scanResult.debug.classroomCenter
+                            ? `${scanResult.debug.classroomCenter.lat.toFixed(6)}, ${scanResult.debug.classroomCenter.lng.toFixed(6)}`
+                            : scanResult.debug.classLocation
+                              ? `${scanResult.debug.classLocation.lat?.toFixed(6)}, ${scanResult.debug.classLocation.lng?.toFixed(6)}`
+                              : "N/A"}
                         </p>
                         <p>
                           <span className="font-semibold">Student:</span>{" "}
-                          {scanResult.debug.studentLocation?.lat.toFixed(6)},{" "}
-                          {scanResult.debug.studentLocation?.lng.toFixed(6)}
+                          {scanResult.debug.studentLocation
+                            ? `${scanResult.debug.studentLocation.lat.toFixed(6)}, ${scanResult.debug.studentLocation.lng.toFixed(6)}`
+                            : "N/A"}
                         </p>
                         <p>
-                          <span className="font-semibold">Accuracy:</span>{" "}
+                          <span className="font-semibold">GPS Accuracy:</span>{" "}
                           ±{Math.round(studentAccuracy || 0)}m
                         </p>
                         <p>
                           <span className="font-semibold">Distance:</span>{" "}
-                          {scanResult.debug.distance.toFixed(2)} m
+                          {typeof scanResult.debug.distance === "number"
+                            ? `${scanResult.debug.distance.toFixed(2)} m`
+                            : `${scanResult.distance} m`}
                         </p>
                         <p>
                           <span className="font-semibold">Radius:</span>{" "}
-                          30m
+                          {scanResult.debug.radius ?? 30}m
                         </p>
                         <p>
-                          <span className="font-semibold">Status Decided:</span>{" "}
+                          <span className="font-semibold">Circle Check:</span>{" "}
+                          <span className={scanResult.debug.withinCircle ?? scanResult.withinGeofence ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                            {(scanResult.debug.withinCircle ?? scanResult.withinGeofence) ? "✅ Inside" : "❌ Outside"}
+                          </span>
+                        </p>
+                        {scanResult.debug.withinOctagon !== undefined && (
+                          <p>
+                            <span className="font-semibold">Octagon Check:</span>{" "}
+                            <span className={scanResult.debug.withinOctagon ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
+                              {scanResult.debug.withinOctagon ? "✅ Inside" : "❌ Outside"}
+                            </span>
+                          </p>
+                        )}
+                        <p>
+                          <span className="font-semibold">Location Source:</span>{" "}
+                          <span className="text-green-600 dark:text-green-400 font-semibold">
+                            {scanResult.debug.locationSource === "teacher_gps" || scanResult.debug.locationSource === "session_db"
+                              ? "📍 Teacher GPS (Session DB)"
+                              : scanResult.debug.locationSource
+                                ? `⚠️ ${scanResult.debug.locationSource}`
+                                : "📍 Teacher GPS"}
+                          </span>
+                        </p>
+                        <p>
+                          <span className="font-semibold">Status Decision:</span>{" "}
                           <span
                             className={
                               scanResult.debug.status === "Present"

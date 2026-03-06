@@ -17,6 +17,7 @@ export interface User {
   rollNumber?: string; // For students
   branch?: string; // For students
   section?: string; // For students
+  phone?: string; // For students
   teacherId?: string; // For teachers
   adminCode?: string; // For principals
 }
@@ -46,25 +47,51 @@ export interface ErrorResponse {
   message: string;
 }
 
-export async function connectToDatabase(): Promise<Db> {
+export async function connectToDatabase(retries = 3, delay = 5000): Promise<Db> {
   if (db) {
     return db;
   }
 
-  try {
-    client = new MongoClient(MONGODB_URI);
-    await client.connect();
-    console.log("✅ Connected to MongoDB Atlas");
+  /*
+  const MONGODB_URI =
+  "mongodb+srv://girishkumargundapu:1Fxm79M7ADeiVYtU@cluster0.tvttzmg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+  */
 
-    db = client.db(DATABASE_NAME);
-    const maskedUri = MONGODB_URI.replace(/:([^:@]+)@/, ":****@");
-    console.log(`✅ Using database: ${DATABASE_NAME} at ${maskedUri}`);
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(`📡 Connecting to MongoDB... (Attempt ${attempt}/${retries})`);
+      client = new MongoClient(MONGODB_URI, {
+        serverSelectionTimeoutMS: 5000, // Fail fast if blocked
+        connectTimeoutMS: 10000,
+      });
 
-    return db;
-  } catch (error) {
-    console.error("❌ Failed to connect to MongoDB:", error);
-    throw error;
+      await client.connect();
+      console.log("✅ Connected to MongoDB Atlas");
+
+      db = client.db(DATABASE_NAME);
+      const maskedUri = MONGODB_URI.replace(/:([^:@]+)@/, ":****@");
+      console.log(`✅ Using database: ${DATABASE_NAME} at ${maskedUri}`);
+
+      return db;
+    } catch (error: any) {
+      console.error(`❌ MongoDB Connection Failed (Attempt ${attempt}):`, error.message);
+
+      if (error.message.includes("ETIMEDOUT") || error.message.includes("buffering timed out")) {
+        console.warn("\n⚠️  POSSIBLE CAUSE: IP ADDRESS BLOCKED");
+        console.warn("👉 Please go to MongoDB Atlas -> Network Access -> Add IP Address -> 'Allow Access from Anywhere' (0.0.0.0/0)");
+        console.warn("👉 Or check your Firewall/VPN/Proxy settings.\n");
+      }
+
+      if (attempt === retries) {
+        throw new Error(`Failed to connect to MongoDB after ${retries} attempts. Check your IP Whitelist on Atlas.`);
+      }
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
+
+  throw new Error("MongoDB connection failed.");
 }
 
 export function getCollection(collectionName: string): Collection {
@@ -145,18 +172,9 @@ export async function initializeDatabase(): Promise<void> {
       }
     }
 
-    // Initialize settings if not present
-    const settingsCol = getCollection("settings");
-    const existingSettings = await settingsCol.findOne({ type: "classroom_location" });
-    if (!existingSettings) {
-      // Default to 0,0 or a placeholder. User should update this.
-      await settingsCol.insertOne({
-        type: "classroom_location",
-        classLatitude: 0,
-        classLongitude: 0,
-      });
-      console.log("⚠️ Initialized default classroom location (0,0). Please update in DB.");
-    }
+    // NOTE: classroom_location is no longer auto-initialized.
+    // Location is captured dynamically per-session from teacher GPS.
+    // See: POST /api/session/start
 
     console.log("✅ Database initialization complete");
   } catch (error) {

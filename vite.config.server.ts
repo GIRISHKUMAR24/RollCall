@@ -29,9 +29,25 @@ export default defineConfig({
         "buffer",
         "querystring",
         "child_process",
-        // External dependencies that should not be bundled
+        "net",
+        "tls",
+        "zlib",
+        "assert",
+        "dns",
+        "readline",
+        "perf_hooks",
+
+        // NPM dependencies — must NOT be bundled (resolved at runtime)
         "express",
         "cors",
+        "dotenv",
+        "dotenv/config",
+        "bcrypt",
+        "jsonwebtoken",
+        "mongodb",
+        "nodemailer",
+        "qrcode",
+        "zod",
       ],
       output: {
         format: "es",

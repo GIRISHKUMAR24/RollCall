@@ -7,12 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Users, 
-  Search, 
-  GraduationCap, 
-  BarChart3, 
-  TrendingUp, 
+import {
+  Users,
+  Search,
+  GraduationCap,
+  BarChart3,
+  TrendingUp,
   Clock,
   CheckCircle,
   XCircle,
@@ -22,6 +22,7 @@ import {
   MapPin,
   Calendar
 } from "lucide-react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 export default function PrincipalDashboard() {
   const navigate = useNavigate();
@@ -65,19 +66,19 @@ export default function PrincipalDashboard() {
 
   useEffect(() => {
     const user = authHelpers.getCurrentUser();
-    
+
     if (!user) {
       navigate("/");
       return;
     }
-    
+
     setUserEmail(user.email);
   }, [navigate]);
 
   const handleStudentSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSearching(true);
-    
+
     // Simulate search delay
     setTimeout(() => {
       const student = studentDatabase[searchRollNo as keyof typeof studentDatabase];
@@ -92,12 +93,12 @@ export default function PrincipalDashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-indigo-100 dark:bg-gradient-to-br dark:from-gray-900 dark:via-black dark:to-gray-800 relative overflow-hidden">
-      
+
       {/* Light mode background */}
       <div className="absolute inset-0 dark:hidden overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-50/80 via-indigo-50/60 to-blue-50/80"></div>
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-purple-200/30 to-indigo-200/30 rounded-full filter blur-3xl animate-pulse" style={{animationDuration: '8s'}}></div>
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-gradient-to-r from-blue-200/25 to-purple-200/25 rounded-full filter blur-3xl animate-pulse animation-delay-4000" style={{animationDuration: '10s'}}></div>
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-purple-200/30 to-indigo-200/30 rounded-full filter blur-3xl animate-pulse" style={{ animationDuration: '8s' }}></div>
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-gradient-to-r from-blue-200/25 to-purple-200/25 rounded-full filter blur-3xl animate-pulse animation-delay-4000" style={{ animationDuration: '10s' }}></div>
         <div className="absolute inset-0 opacity-5" style={{
           backgroundImage: `radial-gradient(circle at 50px 50px, rgba(99, 102, 241, 0.1) 1%, transparent 1%)`,
           backgroundSize: '100px 100px'
@@ -106,9 +107,9 @@ export default function PrincipalDashboard() {
 
       {/* Dark mode background */}
       <div className="absolute inset-0 hidden dark:block overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-gradient-radial from-purple-500/20 via-purple-500/5 to-transparent rounded-full filter blur-3xl animate-pulse" style={{animationDuration: '6s'}}></div>
-        <div className="absolute bottom-1/4 right-1/4 w-[350px] h-[350px] bg-gradient-radial from-blue-500/15 via-blue-500/5 to-transparent rounded-full filter blur-3xl animate-pulse animation-delay-3000" style={{animationDuration: '8s'}}></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-gradient-radial from-indigo-400/10 via-indigo-400/3 to-transparent rounded-full filter blur-2xl animate-pulse animation-delay-6000" style={{animationDuration: '10s'}}></div>
+        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-gradient-radial from-purple-500/20 via-purple-500/5 to-transparent rounded-full filter blur-3xl animate-pulse" style={{ animationDuration: '6s' }}></div>
+        <div className="absolute bottom-1/4 right-1/4 w-[350px] h-[350px] bg-gradient-radial from-blue-500/15 via-blue-500/5 to-transparent rounded-full filter blur-3xl animate-pulse animation-delay-3000" style={{ animationDuration: '8s' }}></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-gradient-radial from-indigo-400/10 via-indigo-400/3 to-transparent rounded-full filter blur-2xl animate-pulse animation-delay-6000" style={{ animationDuration: '10s' }}></div>
       </div>
 
       {/* Header */}
@@ -129,9 +130,12 @@ export default function PrincipalDashboard() {
                 </p>
               </div>
             </div>
-            <LogoutButton 
-              className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm border-gray-200/50 dark:border-gray-600/50 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-300 dark:hover:border-red-700 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 shadow-md hover:shadow-lg"
-            />
+            <div className="flex items-center space-x-4">
+              <ThemeToggle />
+              <LogoutButton
+                className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm border-gray-200/50 dark:border-gray-600/50 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-300 dark:hover:border-red-700 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 shadow-md hover:shadow-lg"
+              />
+            </div>
           </div>
         </div>
       </header>
@@ -196,10 +200,10 @@ export default function PrincipalDashboard() {
         <Card className="border-0 shadow-xl backdrop-blur-xl bg-white/90 dark:bg-black/40 relative overflow-hidden group transition-all duration-500 hover:shadow-2xl hover:-translate-y-0.5 mb-8">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white/30 to-purple-50/50 dark:from-indigo-900/20 dark:via-gray-800/30 dark:to-purple-900/20"></div>
           <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-pink-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-          
+
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-indigo-500/10 to-transparent rounded-bl-full"></div>
           <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-purple-500/10 to-transparent rounded-tr-full"></div>
-          
+
           <CardHeader className="relative z-10">
             <CardTitle className="flex items-center space-x-2 text-gray-900 dark:text-white">
               <Search className="w-6 h-6 text-indigo-600" />
@@ -209,7 +213,7 @@ export default function PrincipalDashboard() {
               Search for student records by roll number
             </CardDescription>
           </CardHeader>
-          
+
           <CardContent className="relative z-10">
             <form onSubmit={handleStudentSearch} className="flex gap-4">
               <div className="flex-1">
@@ -220,8 +224,8 @@ export default function PrincipalDashboard() {
                   className="h-12 bg-white/80 dark:bg-black/30 border-gray-200/60 dark:border-gray-600/60 backdrop-blur-sm hover:border-indigo-400 dark:hover:border-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-500 transition-all duration-300"
                 />
               </div>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={isSearching || !searchRollNo.trim()}
                 className="h-12 px-8 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
               >
@@ -292,7 +296,7 @@ export default function PrincipalDashboard() {
                               </div>
                               <Progress value={searchResult.overallAttendance} className="h-2" />
                             </div>
-                            
+
                             {/* Subject-wise Attendance */}
                             <div>
                               <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Subject-wise Attendance</p>
@@ -300,13 +304,13 @@ export default function PrincipalDashboard() {
                                 {searchResult.subjectWiseAttendance.map((subject: any, index: number) => (
                                   <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded">
                                     <span className="text-sm text-gray-700 dark:text-gray-300">{subject.subject}</span>
-                                    <Badge 
+                                    <Badge
                                       className={
-                                        subject.percentage >= 85 
+                                        subject.percentage >= 85
                                           ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
                                           : subject.percentage >= 75
-                                          ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
-                                          : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                                            ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                            : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                                       }
                                     >
                                       {subject.percentage}%
@@ -339,8 +343,8 @@ export default function PrincipalDashboard() {
                                       record.status === "Present"
                                         ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
                                         : record.status === "Outside Radius"
-                                        ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
-                                        : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                                          ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                          : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
                                     }
                                   >
                                     {record.status}
@@ -361,7 +365,7 @@ export default function PrincipalDashboard() {
 
                       {/* Clear Search */}
                       <div className="mt-6 pt-4 border-t border-green-200 dark:border-green-800">
-                        <Button 
+                        <Button
                           onClick={() => {
                             setSearchRollNo("");
                             setSearchResult(null);
@@ -386,7 +390,7 @@ export default function PrincipalDashboard() {
                           </p>
                         </div>
                       </div>
-                      <Button 
+                      <Button
                         onClick={() => {
                           setSearchRollNo("");
                           setSearchResult(null);

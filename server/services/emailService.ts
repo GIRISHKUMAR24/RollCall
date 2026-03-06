@@ -128,7 +128,7 @@ class EmailService {
 
   // Generate JWT token for QR code with expiration
   private generateQRToken(data: QREmailData): string {
-    const expirySeconds = parseInt(process.env.QR_EXPIRY_SECONDS || "120");
+    const expirySeconds = parseInt(process.env.QR_EXPIRY_SECONDS || "3600");
 
     return jwt.sign(
       {
@@ -174,7 +174,7 @@ class EmailService {
     qrToken: string,
   ): string {
     const directLink = `${appUrl}/scan/from-email?token=${qrToken}`;
-    const expiryTime = parseInt(process.env.QR_EXPIRY_SECONDS || "120");
+    const expiryTime = parseInt(process.env.QR_EXPIRY_SECONDS || "3600");
 
     return `
 <!DOCTYPE html>
