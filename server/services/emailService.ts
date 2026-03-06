@@ -151,8 +151,9 @@ class EmailService {
   private async generateQRCodeImage(
     qrToken: string,
     baseUrl: string,
+    sessionId: string,
   ): Promise<string> {
-    const qrUrl = `${baseUrl}/scan/from-email?token=${qrToken}`;
+    const qrUrl = `${baseUrl}/scan/from-email?token=${qrToken}&sessionId=${sessionId}`;
 
     const qrCodeBuffer = await QRCode.toBuffer(qrUrl, {
       width: 200,
@@ -173,7 +174,7 @@ class EmailService {
     appUrl: string,
     qrToken: string,
   ): string {
-    const directLink = `${appUrl}/scan/from-email?token=${qrToken}`;
+    const directLink = `${appUrl}/scan/from-email?token=${qrToken}&sessionId=${data.sessionId}`;
     const expiryTime = parseInt(process.env.QR_EXPIRY_SECONDS || "3600");
 
     return `
@@ -298,7 +299,7 @@ class EmailService {
     const qrToken = this.generateQRToken(data);
 
     // Generate QR code image
-    const qrCodeImage = await this.generateQRCodeImage(qrToken, baseUrl);
+    const qrCodeImage = await this.generateQRCodeImage(qrToken, baseUrl, data.sessionId);
 
     // Create email HTML
     const htmlContent = this.createEmailHTML(
@@ -383,7 +384,7 @@ class EmailService {
         const qrToken = this.generateQRToken(emailData);
 
         // Generate QR code image
-        const qrCodeImage = await this.generateQRCodeImage(qrToken, baseUrl);
+        const qrCodeImage = await this.generateQRCodeImage(qrToken, baseUrl, emailData.sessionId);
 
         // Create email HTML
         const htmlContent = this.createEmailHTML(

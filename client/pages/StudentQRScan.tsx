@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/env";
+import { authHelpers } from "@/lib/auth";
 import {
   Card,
   CardContent,
@@ -103,6 +104,19 @@ export default function StudentQRScan() {
   // 1. Verify Token on Mount
   useEffect(() => {
     const token = searchParams.get("token");
+    const sessionId = searchParams.get("sessionId");
+
+    if (!authHelpers.isLoggedIn()) {
+      let redirectUrl = `/student-qr-scan`;
+      if (token) {
+        redirectUrl += `?token=${token}`;
+      }
+      if (sessionId) {
+        redirectUrl += token ? `&sessionId=${sessionId}` : `?sessionId=${sessionId}`;
+      }
+      navigate(`/?redirectTo=${encodeURIComponent(redirectUrl)}${sessionId ? `&sessionId=${sessionId}` : ""}`);
+      return;
+    }
 
     if (token) {
       fetch(`${API_BASE}/email/verify-qr`, {

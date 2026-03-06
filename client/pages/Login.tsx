@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { authAPI, authStorage } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +56,12 @@ export default function Login() {
       authStorage.setToken(response.token);
 
       // Navigate to dashboard
-      navigate(`/${role}-dashboard`);
+      const redirectTo = searchParams.get("redirectTo");
+      if (redirectTo) {
+        navigate(redirectTo);
+      } else {
+        navigate(`/${role}-dashboard`);
+      }
     } catch (err: any) {
       setError(err.message || "Login failed. Please try again.");
     } finally {

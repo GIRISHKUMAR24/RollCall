@@ -36,8 +36,11 @@ export default function EmailScanLanding() {
         } else {
             // If normal browser, redirect immediately to the actual scan page
             const token = searchParams.get("token");
+            const sessionId = searchParams.get("sessionId");
             if (token) {
-                navigate(`/student-qr-scan?token=${token}`, { replace: true });
+                let url = `/student-qr-scan?token=${token}`;
+                if (sessionId) url += `&sessionId=${sessionId}`;
+                navigate(url, { replace: true });
             } else {
                 navigate("/");
             }
@@ -87,8 +90,11 @@ export default function EmailScanLanding() {
                             onClick={() => {
                                 // Fallback: try to open in new window, though often blocked by in-app browsers
                                 const token = searchParams.get("token");
+                                const sessionId = searchParams.get("sessionId");
                                 if (token) {
-                                    window.open(`${window.location.origin}/student-qr-scan?token=${token}`, '_system');
+                                    let url = `/student-qr-scan?token=${token}`;
+                                    if (sessionId) url += `&sessionId=${sessionId}`;
+                                    window.open(`${window.location.origin}${url}`, '_system');
                                 }
                             }}
                         >

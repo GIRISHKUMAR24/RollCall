@@ -549,7 +549,7 @@ export default function TeacherDashboard() {
           setShowQRDialog(true);
 
           // Start the attendance timer automatically after sending QRs
-          setAttendanceStarted(true);
+          setAttendanceStarted(false);
           setTimeLeft(60);
           setCurrentSessionId(result.sessionId);
 
@@ -914,6 +914,24 @@ Solutions:
                       </div>
                     )}
 
+                    {!attendanceStarted && qrsSent && currentSessionId && (
+                      <div className="w-full p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700 text-center">
+                        <p className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-3">
+                          Emails sent successfully. Start the attendance timer when students are ready.
+                        </p>
+                        <Button
+                          onClick={() => {
+                            setAttendanceStarted(true);
+                            setTimeLeft(60);
+                          }}
+                          className="w-full bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <Timer className="w-4 h-4 mr-2" />
+                          Start Timer
+                        </Button>
+                      </div>
+                    )}
+
                     {/* QR System Info */}
                     <div
                       className={`w-56 h-56 bg-white border-2 ${attendanceStarted ? "border-green-400 shadow-lg shadow-green-200" : "border-gray-200"} rounded-lg flex items-center justify-center transition-all duration-300`}
@@ -1029,6 +1047,31 @@ Solutions:
           </Card>
         )}
 
+        {!attendanceStarted && timeLeft > 0 && currentSessionId && (
+          <Card className="mb-8 border-l-4 border-blue-500 shadow-md bg-white dark:bg-gray-800">
+            <CardContent className="p-6 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                  Ready to Start Attendance
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Emails sent successfully. Start the attendance timer when students are ready.
+                </p>
+              </div>
+              <Button
+                className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+                onClick={() => {
+                  setAttendanceStarted(true);
+                  setTimeLeft(60);
+                }}
+              >
+                <Timer className="w-4 h-4 mr-2" />
+                Start Timer
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {!attendanceStarted && timeLeft === 0 && currentSessionId && (
           <Card className="mb-8 border-l-4 border-red-500 shadow-md bg-white dark:bg-gray-800">
             <CardContent className="p-6 flex items-center justify-between">
@@ -1137,8 +1180,8 @@ Solutions:
                                 size="sm"
                                 variant={isPresent ? "outline" : "default"}
                                 className={`h-8 ${isPresent
-                                    ? "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800"
-                                    : "bg-green-600 hover:bg-green-700 text-white"
+                                  ? "text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800"
+                                  : "bg-green-600 hover:bg-green-700 text-white"
                                   }`}
                                 onClick={(e) => {
                                   e.stopPropagation();
