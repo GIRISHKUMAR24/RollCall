@@ -86,29 +86,8 @@ export default function SecureContextBanner({
                         </p>
                         <p className="text-xs mt-1 leading-relaxed text-red-700 dark:text-red-400">
                             Please open this page via an{" "}
-                            <span className="font-bold">HTTPS URL</span> (e.g. an ngrok or Cloudflare
-                            tunnel). Location and camera will not work over plain HTTP on mobile devices.
+                            <span className="font-bold">HTTPS URL</span>. Location and camera will not work over plain HTTP on mobile devices.
                         </p>
-
-                        {/* Quick help links */}
-                        <div className="flex flex-wrap gap-3 mt-3">
-                            <a
-                                href="https://ngrok.com/"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-red-700 dark:text-red-400 underline underline-offset-2 hover:text-red-900 dark:hover:text-red-200"
-                            >
-                                <ExternalLink className="w-3 h-3" /> ngrok
-                            </a>
-                            <a
-                                href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs font-medium text-red-700 dark:text-red-400 underline underline-offset-2 hover:text-red-900 dark:hover:text-red-200"
-                            >
-                                <ExternalLink className="w-3 h-3" /> Cloudflare Tunnel
-                            </a>
-                        </div>
                     </div>
 
                     {/* Dismiss button */}
@@ -177,7 +156,7 @@ export default function SecureContextBanner({
                                     ⚠ Geolocation &amp; Camera are blocked in this context.
                                 </p>
                                 <p className="text-gray-500 dark:text-gray-400 mt-1">
-                                    Use a tunnel: <code className="bg-gray-200 dark:bg-gray-800 px-1 rounded">npm run share</code>
+                                    Host the application on an HTTPS domain for production.
                                 </p>
                             </div>
                         )}

@@ -141,6 +141,15 @@ export async function handleRecordAttendance(
       return;
     }
 
+    // Session not yet activated by teacher
+    if (sessionDoc && !sessionDoc.active) {
+      res.status(400).json({
+        error: "Session Not Active",
+        message: "Waiting for teacher to start attendance.",
+      });
+      return;
+    }
+
     // ── Resolve Authoritative Classroom Center ──────────────────────────────
     //
     // STRICT RULE: Location comes ONLY from the MongoDB session document.

@@ -194,7 +194,7 @@ export async function handleGetActiveSession(
                 radius: session.radius ?? GEOFENCE_RADIUS_METERS,
                 startTime: session.startTime,
                 endTime: session.endTime,
-                active: !session.finalizedAt,
+                active: session.active === true && !session.finalizedAt,
                 branch: session.branch,
                 section: session.section,
                 subject: session.subject,
@@ -205,6 +205,65 @@ export async function handleGetActiveSession(
         res.status(500).json({
             error: "Internal Server Error",
             message: "Failed to fetch session",
+        });
+    }
+}
+
+/**
+ * POST /api/session/activate
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Called by the Teacher Dashboard to actually start the timer and allow students to scan.
+ */
+export async function handleActivateSession(
+    req: Request,
+    res: Response,
+): Promise<void> {
+    try {
+        const { sessionId } = req.body as { sessionId?: string };
+
+        if (!sessionId) {
+            res.status(400).json({
+                error: "Validation Error",
+                message: "sessionId is required",
+            });
+            return;
+        }
+
+        const sessionsCol = getCollection("sessions");
+
+        // Calculate new end time based on current time
+        const windowSeconds = parseInt(process.env.ATTENDANCE_WINDOW_SECONDS || "60", 10);
+        const startTime = new Date();
+        const endTime = new Date(startTime.getTime() + windowSeconds * 1000);
+
+        const result = await sessionsCol.updateOne(
+            { sessionId },
+            {
+                $set: {
+                    active: true,
+                    startTime,
+                    endTime
+                }
+            }
+        );
+
+        if (result.matchedCount === 0) {
+            res.status(404).json({
+                error: "Not Found",
+                message: "Session not found",
+            });
+            return;
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Session activated successfully",
+        });
+    } catch (error: any) {
+        console.error("❌ Activate session error:", error);
+        res.status(500).json({
+            error: "Internal Server Error",
+            message: "Failed to activate session",
         });
     }
 }

@@ -58,14 +58,6 @@ type LocationState =
   | "unsupported" // Browser doesn't support geolocation
   | "error";      // Other errors (timeout, unavailable)
 
-interface DebugInfo {
-  isSecureContext: boolean;
-  origin: string;
-  protocol: string;
-  lastErrorCode?: number;
-  lastErrorMessage?: string;
-  userAgent?: string;
-}
 
 export default function StudentQRScan() {
   const navigate = useNavigate();
@@ -93,13 +85,28 @@ export default function StudentQRScan() {
   const [scanResult, setScanResult] = useState<any>(null);
   const [scanError, setScanError] = useState<string | null>(null);
 
-  // Debug State
-  const [debugInfo, setDebugInfo] = useState<DebugInfo>({
-    isSecureContext: typeof window !== "undefined" ? window.isSecureContext : false,
-    origin: typeof window !== "undefined" ? window.location.origin : "",
-    protocol: typeof window !== "undefined" ? window.location.protocol : "",
-    userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
-  });
+  const [sessionActive, setSessionActive] = useState(false);
+
+  // Poll for session active status
+  useEffect(() => {
+    if (!studentData?.sessionId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/session/active?sessionId=${studentData.sessionId}`);
+        const data = await res.json();
+        if (data.success) {
+          setSessionActive(data.session?.active === true);
+        } else {
+          setSessionActive(false);
+        }
+      } catch (err) {
+        // silently ignore polling errors
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [studentData?.sessionId]);
 
   // 1. Verify Token on Mount
   useEffect(() => {
@@ -153,24 +160,14 @@ export default function StudentQRScan() {
 
   // 2. Request Location Handler (Manual Trigger Only)
   const handleRetryLocation = (retryCount = 0) => {
-    // Update debug info first
-    setDebugInfo(prev => ({
-      ...prev,
-      isSecureContext: window.isSecureContext,
-      origin: window.location.origin,
-      protocol: window.location.protocol,
-      lastErrorCode: undefined,
-      lastErrorMessage: undefined,
-    }));
 
     // A. Check Secure Context
     if (!window.isSecureContext && window.location.hostname !== "localhost") {
       setLocationState("error");
       setLocationErrorMsg(
-        "⚠️ You opened this page on HTTP (local network URL). " +
+        "⚠️ You opened this page on HTTP. " +
         "GPS is blocked by your browser on HTTP. " +
-        "Please open the HTTPS link from your email instead " +
-        "(it starts with https://... not http://192.168...)."
+        "Please open the HTTPS link instead."
       );
       return;
     }
@@ -227,12 +224,6 @@ export default function StudentQRScan() {
         console.error("❌ [StudentQRScan] Geolocation Error:", error);
         setCurrentLocation(null);
 
-        // Update debug info with error
-        setDebugInfo(prev => ({
-          ...prev,
-          lastErrorCode: error.code,
-          lastErrorMessage: error.message,
-        }));
 
         if (error.code === error.PERMISSION_DENIED) {
           setLocationState("denied");
@@ -540,35 +531,6 @@ export default function StudentQRScan() {
                 )}
               </div>
 
-              {/* Debug Info Section */}
-              <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono text-left space-y-1 border border-gray-300 dark:border-gray-700">
-                <div className="flex items-center gap-2 border-b border-gray-300 dark:border-gray-600 pb-1 mb-1">
-                  <Info className="w-3 h-3" />
-                  <span className="font-bold">Debug Info</span>
-                </div>
-                {/* Secure Context Warning Banner */}
-                {!debugInfo.isSecureContext && window.location.hostname !== "localhost" && (
-                  <div className="mb-2 px-2 py-1 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded text-red-700 dark:text-red-300 text-xs font-semibold">
-                    ⚠️ Secure HTTPS connection required for location and camera access.
-                  </div>
-                )}
-                <p>
-                  <span className="text-gray-500 dark:text-gray-400">Secure Context: </span>
-                  <span className={debugInfo.isSecureContext ? "text-green-600 dark:text-green-400 font-bold" : "text-red-600 dark:text-red-400 font-bold"}>
-                    {debugInfo.isSecureContext ? "✓ Yes" : "✗ No"}
-                  </span>
-                </p>
-                <p>
-                  <span className="text-gray-500 dark:text-gray-400">Protocol: </span>
-                  <span className={debugInfo.protocol === "https:" ? "text-green-600 dark:text-green-400" : "text-orange-600 dark:text-orange-400"}>
-                    {debugInfo.protocol || "unknown"}
-                  </span>
-                </p>
-                <p><span className="text-gray-500 dark:text-gray-400">Origin: </span>{debugInfo.origin}</p>
-                {debugInfo.lastErrorCode && <p><span className="text-gray-500 dark:text-gray-400">Last Error Code: </span>{debugInfo.lastErrorCode}</p>}
-                {debugInfo.lastErrorMessage && <p><span className="text-gray-500 dark:text-gray-400">Last Error Msg: </span>{debugInfo.lastErrorMessage}</p>}
-                <p className="truncate" title={debugInfo.userAgent}><span className="text-gray-500 dark:text-gray-400">UA: </span>{debugInfo.userAgent?.substring(0, 50)}...</p>
-              </div>
 
             </CardContent>
           </Card>
@@ -592,30 +554,42 @@ export default function StudentQRScan() {
                     <QrCode className="w-16 h-16 text-green-600" />
                   </div>
 
-                  <Button
-                    onClick={handleScanQR}
-                    disabled={!canScan || scanning}
-                    className={`w-full size-lg ${canScan
-                      ? "bg-green-600 hover:bg-green-700"
-                      : "bg-gray-400 cursor-not-allowed hover:bg-gray-400 opacity-70"
-                      }`}
-                    size="lg"
-                  >
-                    <QrCode className="w-5 h-5 mr-2" />
-                    Scan QR Code for Attendance
-                  </Button>
+                  {!sessionActive ? (
+                    <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg text-yellow-700 dark:text-yellow-300 font-medium">
+                      <span className="animate-pulse mr-2">⏳</span>
+                      Waiting for teacher to start attendance...
+                      <p className="text-xs mt-2 text-yellow-600 dark:text-yellow-400 font-normal">
+                        The scanner will activate automatically. Please stay on this page.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <Button
+                        onClick={handleScanQR}
+                        disabled={!canScan || scanning}
+                        className={`w-full size-lg ${canScan
+                          ? "bg-green-600 hover:bg-green-700"
+                          : "bg-gray-400 cursor-not-allowed hover:bg-gray-400 opacity-70"
+                          }`}
+                        size="lg"
+                      >
+                        <QrCode className="w-5 h-5 mr-2" />
+                        Scan QR Code for Attendance
+                      </Button>
 
-                  {!canScan && (
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-                      {locationState === "inapp"
-                        ? "Open in Chrome/Safari to enable scanning."
-                        : "Allow location and tap 'Get Location' to enable scanning."}
-                    </p>
+                      {!canScan && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                          {locationState === "inapp"
+                            ? "Open in Chrome/Safari to enable scanning."
+                            : "Allow location and tap 'Get Location' to enable scanning."}
+                        </p>
+                      )}
+
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+                        Make sure you're inside the {scanResult?.debug?.radius ?? 30}m geofence zone
+                      </p>
+                    </>
                   )}
-
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-                    Make sure you're inside the {scanResult?.debug?.radius ?? 30}m geofence zone
-                  </p>
                 </div>
               )}
 

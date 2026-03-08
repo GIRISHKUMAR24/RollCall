@@ -608,6 +608,25 @@ Solutions:
     }
   };
 
+  const handleActivateTimer = async () => {
+    if (!currentSessionId) return;
+    try {
+      const response = await fetch(`${API_BASE}/session/activate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: currentSessionId }),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to activate session");
+      }
+      setAttendanceStarted(true);
+      setTimeLeft(60);
+    } catch (error) {
+      console.error("Failed to activate timer:", error);
+      alert("Error starting timer. Please try again.");
+    }
+  };
+
   // handleStartAttendance removed - using server-side permanent location
 
   const handleManualOverride = async (rollNumber: string, currentStatus: string) => {
@@ -920,10 +939,7 @@ Solutions:
                           Emails sent successfully. Start the attendance timer when students are ready.
                         </p>
                         <Button
-                          onClick={() => {
-                            setAttendanceStarted(true);
-                            setTimeLeft(60);
-                          }}
+                          onClick={handleActivateTimer}
                           className="w-full bg-green-600 hover:bg-green-700 text-white"
                         >
                           <Timer className="w-4 h-4 mr-2" />
@@ -1060,10 +1076,7 @@ Solutions:
               </div>
               <Button
                 className="bg-green-600 hover:bg-green-700 text-white shrink-0"
-                onClick={() => {
-                  setAttendanceStarted(true);
-                  setTimeLeft(60);
-                }}
+                onClick={handleActivateTimer}
               >
                 <Timer className="w-4 h-4 mr-2" />
                 Start Timer

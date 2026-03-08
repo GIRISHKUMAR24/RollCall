@@ -136,7 +136,7 @@ export async function handleSendAttendanceEmails(
           radius: geofenceRadius,
           startTime: sessionStartTime,
           endTime: sessionEndTime,
-          active: true,
+          active: false,
           createdAt: new Date(),
         },
       },

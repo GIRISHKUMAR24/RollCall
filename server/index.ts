@@ -17,7 +17,7 @@ import { handleGetStudentsByClass, handleSearchStudentByRollNo } from "./routes/
 import { handleRecordAttendance, handleFinalizeAttendance, handleManualAttendanceOverride } from "./routes/attendance";
 import { handleGetAttendanceStatus } from "./routes/attendance-status";
 import { handleGetAttendanceSummary } from "./routes/attendance-summary";
-import { handleStartSession, handleGetActiveSession } from "./routes/session";
+import { handleStartSession, handleGetActiveSession, handleActivateSession } from "./routes/session";
 
 /**
  * Build a dynamic CORS policy that:
@@ -140,6 +140,7 @@ export function createServer() {
 
   // Session management routes (dynamic classroom location)
   app.post("/api/session/start", handleStartSession);
+  app.post("/api/session/activate", handleActivateSession);
   app.get("/api/session/active", handleGetActiveSession);
 
   // Example API routes
