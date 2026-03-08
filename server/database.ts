@@ -1,11 +1,11 @@
 import { MongoClient, Db, Collection } from "mongodb";
 
-const MONGODB_URI =
-  "mongodb+srv://girishkumargundapu:1Fxm79M7ADeiVYtU@cluster0.tvttzmg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-const DATABASE_NAME = "attendanceDB";
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://girishkumargundapu:1Fxm79M7ADeiVYtU@cluster0.tvttzmg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const DATABASE_NAME = process.env.DATABASE_NAME || "attendanceDB";
 
 let client: MongoClient;
 let db: Db;
+let cachedDbPromise: Promise<Db> | null = null;
 
 export interface User {
   _id?: any;
@@ -52,46 +52,51 @@ export async function connectToDatabase(retries = 3, delay = 5000): Promise<Db> 
     return db;
   }
 
-  /*
-  const MONGODB_URI =
-  "mongodb+srv://girishkumargundapu:1Fxm79M7ADeiVYtU@cluster0.tvttzmg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-  */
-
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      console.log(`📡 Connecting to MongoDB... (Attempt ${attempt}/${retries})`);
-      client = new MongoClient(MONGODB_URI, {
-        serverSelectionTimeoutMS: 5000, // Fail fast if blocked
-        connectTimeoutMS: 10000,
-      });
-
-      await client.connect();
-      console.log("✅ Connected to MongoDB Atlas");
-
-      db = client.db(DATABASE_NAME);
-      const maskedUri = MONGODB_URI.replace(/:([^:@]+)@/, ":****@");
-      console.log(`✅ Using database: ${DATABASE_NAME} at ${maskedUri}`);
-
-      return db;
-    } catch (error: any) {
-      console.error(`❌ MongoDB Connection Failed (Attempt ${attempt}):`, error.message);
-
-      if (error.message.includes("ETIMEDOUT") || error.message.includes("buffering timed out")) {
-        console.warn("\n⚠️  POSSIBLE CAUSE: IP ADDRESS BLOCKED");
-        console.warn("👉 Please go to MongoDB Atlas -> Network Access -> Add IP Address -> 'Allow Access from Anywhere' (0.0.0.0/0)");
-        console.warn("👉 Or check your Firewall/VPN/Proxy settings.\n");
-      }
-
-      if (attempt === retries) {
-        throw new Error(`Failed to connect to MongoDB after ${retries} attempts. Check your IP Whitelist on Atlas.`);
-      }
-
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
+  if (cachedDbPromise) {
+    return cachedDbPromise;
   }
 
-  throw new Error("MongoDB connection failed.");
+  cachedDbPromise = (async () => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`📡 Connecting to MongoDB... (Attempt ${attempt}/${retries})`);
+        client = new MongoClient(MONGODB_URI, {
+          serverSelectionTimeoutMS: 5000, // Fail fast if blocked
+          connectTimeoutMS: 10000,
+        });
+
+        await client.connect();
+        console.log("✅ Connected to MongoDB Atlas");
+
+        db = client.db(DATABASE_NAME);
+        const maskedUri = MONGODB_URI.replace(/:([^:@]+)@/, ":****@");
+        console.log(`✅ Using database: ${DATABASE_NAME} at ${maskedUri}`);
+
+        return db;
+      } catch (error: any) {
+        console.error(`❌ MongoDB Connection Failed (Attempt ${attempt}):`, error.message);
+
+        if (error.message.includes("ETIMEDOUT") || error.message.includes("buffering timed out") || error.message.includes("Server selection timed out")) {
+          console.warn("\n⚠️  POSSIBLE CAUSE: IP ADDRESS BLOCKED");
+          console.warn("👉 Please go to MongoDB Atlas -> Network Access -> Add IP Address -> 'Allow Access from Anywhere' (0.0.0.0/0)");
+          console.warn("👉 Or check your Firewall/VPN/Proxy settings.\n");
+        }
+
+        if (attempt === retries) {
+          cachedDbPromise = null; // Clear cache on complete failure
+          throw new Error(`Failed to connect to MongoDB after ${retries} attempts. Check your IP Whitelist on Atlas.`);
+        }
+
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    cachedDbPromise = null;
+    throw new Error("MongoDB connection failed.");
+  })();
+
+  return cachedDbPromise;
 }
 
 export function getCollection(collectionName: string): Collection {

@@ -7,6 +7,7 @@ import {
   SignupResponse,
   ErrorResponse,
   User,
+  connectToDatabase,
 } from "../database";
 
 const SALT_ROUNDS = 12;
@@ -76,6 +77,9 @@ export async function handleSignup(req: Request, res: Response): Promise<void> {
       } as ErrorResponse);
       return;
     }
+
+    // Ensure database connection for serverless deployments
+    await connectToDatabase();
 
     // Get the appropriate collection based on role
     const collection = getCollectionByRole(role);
@@ -188,6 +192,9 @@ export async function handleLogin(req: Request, res: Response): Promise<void> {
       } as ErrorResponse);
       return;
     }
+
+    // Ensure database connection for serverless deployments
+    await connectToDatabase();
 
     // Get the appropriate collection based on role
     const collection = getCollectionByRole(role);

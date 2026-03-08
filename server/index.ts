@@ -12,7 +12,7 @@ import {
 } from "./routes/email";
 import { handleEmailDebug, handleTestSingleEmail } from "./routes/email-debug";
 import { handleDirectEmailTest, handleEmailConfig } from "./routes/email-test";
-import { initializeDatabase } from "./database";
+import { initializeDatabase, connectToDatabase } from "./database";
 import { handleGetStudentsByClass, handleSearchStudentByRollNo } from "./routes/students";
 import { handleRecordAttendance, handleFinalizeAttendance, handleManualAttendanceOverride } from "./routes/attendance";
 import { handleGetAttendanceStatus } from "./routes/attendance-status";
@@ -95,10 +95,20 @@ export function createServer() {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-  // Initialize database connection
+  // Initialize database connection background tasks
   initializeDatabase().catch((error) => {
     console.error("❌ Failed to initialize database:", error);
-    process.exit(1);
+  });
+
+  // Serverless Cold Start Fix: Ensure DB connection is active before processing requests
+  app.use(async (req, res, next) => {
+    try {
+      await connectToDatabase();
+      next();
+    } catch (error: any) {
+      console.error("❌ Database Connection Middleware Error:", error.message);
+      res.status(500).json({ error: "Internal Server Error", message: "Database connection failed" });
+    }
   });
 
   // Health check routes
