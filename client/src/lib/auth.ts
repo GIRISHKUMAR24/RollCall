@@ -1,4 +1,4 @@
-import { User } from "../../shared/types";
+import { User } from "../../../shared/types";
 import { API_BASE } from "./env";
 
 export interface LoginRequest {
@@ -32,17 +32,32 @@ export interface AuthError {
 // Authentication API functions
 export const authAPI = {
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const response = await fetch(`${API_BASE}/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(credentials),
-    });
+    let response;
+    try {
+      response = await fetch(`${API_BASE}/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify(credentials),
+      });
+    } catch (error) {
+      console.error("[authAPI.login] Network or CORS Error:", error);
+      throw new Error(`Failed to fetch login: ${error}`);
+    }
 
     if (!response.ok) {
-      const error: AuthError = await response.json();
-      throw new Error(error.message || "Login failed");
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (jsonErr) {
+        const errorText = await response.text();
+        console.error("[authAPI.login] Failed to parse response error JSON. Response body:", errorText);
+        throw new Error(`Login failed (Invalid JSON response). Status: ${response.status}`);
+      }
+      console.error("[authAPI.login] Server Error:", errorData);
+      throw new Error(errorData.message || "Login failed");
     }
 
     return response.json();
@@ -51,17 +66,32 @@ export const authAPI = {
   async signup(
     userData: SignupRequest,
   ): Promise<{ success: boolean; message: string }> {
-    const response = await fetch(`${API_BASE}/signup`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(userData),
-    });
+    let response;
+    try {
+      response = await fetch(`${API_BASE}/signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify(userData),
+      });
+    } catch (error) {
+      console.error("[authAPI.signup] Network Error:", error);
+      throw new Error(`Failed to fetch signup: ${error}`);
+    }
 
     if (!response.ok) {
-      const error: AuthError = await response.json();
-      throw new Error(error.message || "Signup failed");
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (jsonErr) {
+        const errorText = await response.text();
+        console.error("[authAPI.signup] Failed to parse response error JSON. Response body:", errorText);
+        throw new Error(`Signup failed (Invalid JSON response). Status: ${response.status}`);
+      }
+      console.error("[authAPI.signup] Server Error:", errorData);
+      throw new Error(errorData.message || "Signup failed");
     }
 
     return response.json();

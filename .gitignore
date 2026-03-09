@@ -31,3 +31,6 @@ certs/
 *.pem
 *.crt
 *.key
+
+# Local Netlify folder
+.netlify

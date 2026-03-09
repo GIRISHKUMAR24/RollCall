@@ -95,6 +95,12 @@ export function createServer() {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+  // Debug logging
+  app.use((req, res, next) => {
+    console.log(`[API Request] ${req.method} ${req.url}`);
+    next();
+  });
+
   // Initialize database connection background tasks
   initializeDatabase().catch((error) => {
     console.error("❌ Failed to initialize database:", error);
@@ -161,6 +167,15 @@ export function createServer() {
     res.status(404).json({
       error: "Not Found",
       message: "API endpoint not found",
+    });
+  });
+
+  // Global error handler for API routes
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("💥 Global API Error:", err);
+    res.status(err.status || 500).json({
+      error: err.name || "Internal Server Error",
+      message: err.message || "An unexpected error occurred",
     });
   });
 

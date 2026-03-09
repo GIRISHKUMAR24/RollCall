@@ -1,42 +1,67 @@
-import { defineConfig, Plugin } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { createServer } from "./server";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
-  base: process.env.VITE_BASE_PATH || "/",
+export default defineConfig({
+  root: "client",
+  publicDir: "../public",
+  envDir: "..",
   server: {
-    host: "0.0.0.0",
-    port: 4000,
-    allowedHosts: true,
-    hmr: process.env.VITE_DISABLE_HMR === 'true' ? false : undefined,
+    port: 5173,
+    host: true,
+    hmr: {
+      overlay: false, // Prevent the red error overlay as requested
+    },
+    proxy: {
+    },
     fs: {
-      allow: ["./client", "./shared"],
-      deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "server/**"],
+      allow: [
+        path.resolve(__dirname, "client"),
+        path.resolve(__dirname, "shared"),
+        path.resolve(__dirname, "public"),
+        path.resolve(__dirname, "server"),
+      ],
     },
   },
-  build: {
-    outDir: "dist/spa",
-  },
-  plugins: [react(), expressPlugin()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./client"),
+      "@": path.resolve(__dirname, "./client/src"),
       "@shared": path.resolve(__dirname, "./shared"),
     },
   },
-}));
+  plugins: [
+    react(),
+    {
+      name: "express-api",
+      apply: "serve",
+      configureServer(server) {
+        const app = createServer();
+        server.middlewares.use((req, res, next) => {
+          if (!req.url) return next();
 
-function expressPlugin(): Plugin {
-  return {
-    name: "express-plugin",
-    apply: "serve", // Only apply during development (serve mode)
-    configureServer(server) {
-      const app = createServer();
+          // If the request starts with the Netlify function path, rewrite it to /api
+          if (req.url.startsWith("/.netlify/functions/api")) {
+            // Strip the prefix and ensure it starts with /api
+            req.url = req.url.replace("/.netlify/functions/api", "/api");
+            if (!req.url.startsWith("/api")) {
+              req.url = `/api${req.url}`;
+            }
+            return app(req, res);
+          }
 
-      // Add Express app as middleware to Vite dev server
-      server.middlewares.use(app);
+          // If it's a direct /api request, handle it too
+          if (req.url.startsWith("/api")) {
+            return app(req, res);
+          }
+          next();
+        });
+      },
     },
-  };
-}
+  ],
+  build: {
+    outDir: "../dist/spa",
+    emptyOutDir: true,
+  },
+});

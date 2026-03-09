@@ -1,8 +1,5 @@
-import "./global.css";
-import "./lib/resize-observer-fix";
-
 import { Toaster } from "@/components/ui/toaster";
-import { createRoot } from "react-dom/client";
+
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -68,16 +65,4 @@ const App = () => (
     </ThemeProvider>
   </QueryClientProvider>
 );
-
-// Prevent multiple createRoot calls during development
-const rootElement = document.getElementById("root")!;
-let reactRoot: any = null;
-
-function renderApp() {
-  if (!reactRoot) {
-    reactRoot = createRoot(rootElement);
-  }
-  reactRoot.render(<App />);
-}
-
-renderApp();
+export default App;

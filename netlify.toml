@@ -3,6 +3,11 @@
   functions = "netlify/functions"
   publish = "dist/spa"
 
+[dev]
+  command = "npm run dev"
+  port = 8888
+  targetPort = 5173
+  publish = "client"
 
 [functions]
   external_node_modules = ["express"]
@@ -14,7 +19,7 @@
   status = 200
   to = "/.netlify/functions/api/:splat"
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# [[redirects]]
+#   from = "/*"
+#   to = "/index.html"
+#   status = 200
