@@ -41,19 +41,31 @@ export default defineConfig({
         server.middlewares.use((req, res, next) => {
           if (!req.url) return next();
 
-          // If the request starts with the Netlify function path, rewrite it to /api
-          if (req.url.startsWith("/.netlify/functions/api")) {
-            // Strip the prefix and ensure it starts with /api
-            req.url = req.url.replace("/.netlify/functions/api", "/api");
-            if (!req.url.startsWith("/api")) {
-              req.url = `/api${req.url}`;
-            }
-            return app(req, res);
-          }
+          // Standardize all API requests to /api or /.netlify/functions/api
+          const isNetlifyPath = req.url.startsWith("/.netlify/functions/api");
+          const isApiPath = req.url.startsWith("/api");
 
-          // If it's a direct /api request, handle it too
-          if (req.url.startsWith("/api")) {
-            return app(req, res);
+          if (isNetlifyPath || isApiPath) {
+            // Rewrite Netlify path to /api for internal Express routing if needed
+            if (isNetlifyPath) {
+              req.url = req.url.replace("/.netlify/functions/api", "/api");
+              // Ensure it doesn't end up as //api
+              if (!req.url.startsWith("/api")) {
+                req.url = `/api${req.url}`;
+              }
+            }
+
+            console.log(`[Vite Proxy] Routing ${req.method} ${req.url} to Express`);
+
+            try {
+              // Call the express app. We handle it as a function.
+              return app(req, res);
+            } catch (err) {
+              console.error("[Vite Proxy] Express App Error:", err);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: "Server Error", message: "Express app crashed" }));
+              return;
+            }
           }
           next();
         });

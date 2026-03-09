@@ -1,5 +1,5 @@
 async function test() {
-  const url = 'http://localhost:5174/.netlify/functions/api/signup';
+  const url = 'http://localhost:5173/.netlify/functions/api/signup';
   const body = {
     name: 'Test User',
     email: `test-${Date.now()}@gmail.com`,
