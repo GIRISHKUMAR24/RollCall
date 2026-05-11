@@ -26,11 +26,14 @@ export async function handleDirectEmailTest(req: Request, res: Response): Promis
 
     // Create transporter directly
     console.log('🔧 Creating direct transporter...');
+    const trimmedUser = gmailUser.trim();
+    const trimmedPass = gmailPass.replace(/\s+/g, "");
+
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: gmailUser,
-        pass: gmailPass
+        user: trimmedUser,
+        pass: trimmedPass
       }
     });
 

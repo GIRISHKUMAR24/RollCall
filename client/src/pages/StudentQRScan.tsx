@@ -74,6 +74,8 @@ export default function StudentQRScan() {
     sessionId?: string;
     teacherLocation: { lat: number; lng: number } | null;
   } | null>(null);
+  // True while we are waiting for the token verify API response
+  const [tokenLoading, setTokenLoading] = useState(true);
 
   // Location & Scan State
   const [locationState, setLocationState] = useState<LocationState>("idle");
@@ -86,25 +88,40 @@ export default function StudentQRScan() {
   const [scanError, setScanError] = useState<string | null>(null);
 
   const [sessionActive, setSessionActive] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [sessionEndTime, setSessionEndTime] = useState<Date | null>(null);
 
   // Poll for session active status
   useEffect(() => {
     if (!studentData?.sessionId) return;
 
-    const interval = setInterval(async () => {
+    const pollSession = async () => {
       try {
         const res = await fetch(`${API_BASE}/session/active?sessionId=${studentData.sessionId}`);
         const data = await res.json();
-        if (data.success) {
-          setSessionActive(data.session?.active === true);
+        if (data.success && data.session) {
+          const active: boolean = data.session.active === true;
+          const expired: boolean = data.session.expired === true;
+
+          console.log(`[Session Poll] active=${active}, expired=${expired}, endTime=${data.session.endTime}`);
+
+          setSessionActive(active);
+          setSessionExpired(expired);
+
+          if (data.session.endTime) {
+            setSessionEndTime(new Date(data.session.endTime));
+          }
         } else {
           setSessionActive(false);
         }
       } catch (err) {
         // silently ignore polling errors
       }
-    }, 2000);
+    };
 
+    // Poll immediately, then every 2 seconds
+    pollSession();
+    const interval = setInterval(pollSession, 2000);
     return () => clearInterval(interval);
   }, [studentData?.sessionId]);
 
@@ -126,13 +143,20 @@ export default function StudentQRScan() {
     }
 
     if (token) {
+      // Use a 15-second timeout so mobile doesn't spin forever if backend is unreachable
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      setTokenLoading(true);
       fetch(`${API_BASE}/email/verify-qr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
+        signal: controller.signal,
       })
         .then((response) => response.json())
         .then((result) => {
+          clearTimeout(timeoutId);
           if (result.success) {
             setStudentData({
               token,
@@ -149,11 +173,21 @@ export default function StudentQRScan() {
           }
         })
         .catch((error) => {
+          clearTimeout(timeoutId);
           console.error("QR token verification failed:", error);
-          setScanError(`QR Code Error: ${error.message}`);
-          setTimeout(() => navigate("/"), 3000);
+          const isTimeout = error.name === "AbortError";
+          setScanError(
+            isTimeout
+              ? "⚠️ Could not reach the server (timed out). Make sure your mobile and laptop are on the same WiFi network, then reopen this link."
+              : `QR Code Error: ${error.message}`
+          );
+          setTimeout(() => navigate("/"), 5000);
+        })
+        .finally(() => {
+          setTokenLoading(false);
         });
     } else {
+      setTokenLoading(false);
       navigate("/");
     }
   }, [searchParams, navigate]);
@@ -162,12 +196,20 @@ export default function StudentQRScan() {
   const handleRetryLocation = (retryCount = 0) => {
 
     // A. Check Secure Context
-    if (!window.isSecureContext && window.location.hostname !== "localhost") {
+    // NOTE: We intentionally allow HTTP on local network (192.168.x.x) since
+    // we removed the self-signed SSL cert. The check is only needed for
+    // obviously wrong cases like http://localhost on a remote-origin context.
+    if (
+      !window.isSecureContext &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1" &&
+      !window.location.hostname.startsWith("192.168.")
+    ) {
       setLocationState("error");
       setLocationErrorMsg(
-        "⚠️ You opened this page on HTTP. " +
-        "GPS is blocked by your browser on HTTP. " +
-        "Please open the HTTPS link instead."
+        "⚠️ You opened this page on HTTP from a non-local host. " +
+        "GPS may be blocked by your browser. " +
+        "Please open the link sent in your email exactly as-is."
       );
       return;
     }
@@ -334,18 +376,37 @@ export default function StudentQRScan() {
     await submitAttendance();
   };
 
-  // Loading State
+  // Loading State: Show spinner while token is being verified
+  if (tokenLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 via-emerald-50 to-teal-100 dark:from-gray-900 dark:via-black dark:to-gray-800 flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="p-8 text-center">
+            <div className="animate-spin rounded-full h-14 w-14 border-b-4 border-green-600 mx-auto mb-5" />
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+              Verifying QR Code…
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              Connecting to server. Make sure you are on the same WiFi as your laptop.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Error / Invalid state: shown only AFTER loading completes
   if (!studentData) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-100 dark:bg-gradient-to-br dark:from-gray-900 dark:via-black dark:to-gray-800 flex items-center justify-center">
         <Card className="w-full max-w-md">
           <CardContent className="p-6 text-center">
             <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
-              Invalid QR Link
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+              {scanError ? "Connection Error" : "Invalid QR Link"}
             </h2>
-            <p className="text-gray-600 mb-4">
-              This QR code link is invalid or has expired.
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              {scanError || "This QR code link is invalid or has expired."}
             </p>
             <Button onClick={() => navigate("/")} className="w-full">
               Go to Login
@@ -554,7 +615,19 @@ export default function StudentQRScan() {
                     <QrCode className="w-16 h-16 text-green-600" />
                   </div>
 
-                  {!sessionActive ? (
+                  {/* ── State 1: Expired ───────────────────────────────── */}
+                  {sessionExpired && (
+                    <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg text-red-700 dark:text-red-300 font-medium">
+                      <XCircle className="w-6 h-6 mx-auto mb-2 text-red-500" />
+                      QR Code Expired
+                      <p className="text-xs mt-2 text-red-600 dark:text-red-400 font-normal">
+                        The attendance window has closed. Contact your teacher.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* ── State 2: Waiting for teacher ─────────────────── */}
+                  {!sessionExpired && !sessionActive && (
                     <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg text-yellow-700 dark:text-yellow-300 font-medium">
                       <span className="animate-pulse mr-2">⏳</span>
                       Waiting for teacher to start attendance...
@@ -562,15 +635,25 @@ export default function StudentQRScan() {
                         The scanner will activate automatically. Please stay on this page.
                       </p>
                     </div>
-                  ) : (
+                  )}
+
+                  {/* ── State 3: Active — allow scanning ─────────────── */}
+                  {!sessionExpired && sessionActive && (
                     <>
+                      {sessionEndTime && (
+                        <p className="text-sm text-green-700 dark:text-green-400 mb-3 font-medium">
+                          ⏱ Attendance window closes at{" "}
+                          {sessionEndTime.toLocaleTimeString()}
+                        </p>
+                      )}
                       <Button
                         onClick={handleScanQR}
                         disabled={!canScan || scanning}
-                        className={`w-full size-lg ${canScan
-                          ? "bg-green-600 hover:bg-green-700"
-                          : "bg-gray-400 cursor-not-allowed hover:bg-gray-400 opacity-70"
-                          }`}
+                        className={`w-full size-lg ${
+                          canScan
+                            ? "bg-green-600 hover:bg-green-700"
+                            : "bg-gray-400 cursor-not-allowed hover:bg-gray-400 opacity-70"
+                        }`}
                         size="lg"
                       >
                         <QrCode className="w-5 h-5 mr-2" />

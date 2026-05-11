@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import LogoutButton from "@/components/LogoutButton";
 import { authHelpers } from "@/lib/auth";
+import { API_BASE } from "@/lib/env";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,9 +21,21 @@ import {
   Phone,
   Mail,
   MapPin,
-  Calendar
+  Calendar,
+  BarChart,
+  PieChart as PieChartIcon
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { 
+  BarChart as ReChartsBar, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  Cell
+} from "recharts";
 
 export default function PrincipalDashboard() {
   const navigate = useNavigate();
@@ -32,37 +45,12 @@ export default function PrincipalDashboard() {
   const [isSearching, setIsSearching] = useState(false);
 
   // System analytics
-  const systemStats = {
-    totalStudents: 1,
-    totalTeachers: 1,
+  const [systemStats, setSystemStats] = useState({
+    totalStudents: 0,
+    totalTeachers: 0,
     activeSessions: 0,
     attendanceTaken: 0
-  };
-
-  // Student database - only Girish Kumar
-  const studentDatabase = {
-    "2024001": {
-      rollNo: "2024001",
-      name: "Girish Kumar",
-      class: "CSE Section 1",
-      branch: "Computer Science Engineering",
-      email: "girishkumar24122006@gmail.com",
-      phone: "+91 9876543210",
-      parentContact: "+91 9876543211",
-      address: "Hyderabad, Telangana, India",
-      overallAttendance: 0,
-      recentAttendance: [
-        // No attendance records yet
-      ],
-      subjectWiseAttendance: [
-        { subject: "Mathematics", present: 0, total: 0, percentage: 0 },
-        { subject: "Physics", present: 0, total: 0, percentage: 0 },
-        { subject: "Chemistry", present: 0, total: 0, percentage: 0 },
-        { subject: "Programming", present: 0, total: 0, percentage: 0 },
-        { subject: "English", present: 0, total: 0, percentage: 0 },
-      ]
-    }
-  };
+  });
 
   useEffect(() => {
     const user = authHelpers.getCurrentUser();
@@ -73,22 +61,57 @@ export default function PrincipalDashboard() {
     }
 
     setUserEmail(user.email);
+    fetchSystemStats();
   }, [navigate]);
 
-  const handleStudentSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSearching(true);
+  const fetchSystemStats = async () => {
+    try {
+      // Fetch user counts
+      const statsResp = await fetch(`${API_BASE}/stats`);
+      const statsData = await statsResp.json();
+      
+      if (statsResp.ok) {
+        setSystemStats(prev => ({
+          ...prev,
+          totalStudents: statsData.statistics.students.count,
+          totalTeachers: statsData.statistics.teachers.count,
+          attendanceTaken: statsData.statistics.attendance?.count || 0
+        }));
+      }
 
-    // Simulate search delay
-    setTimeout(() => {
-      const student = studentDatabase[searchRollNo as keyof typeof studentDatabase];
-      if (student) {
-        setSearchResult(student);
+      // Fetch active sessions count
+      const sessionResp = await fetch(`${API_BASE}/session/active`);
+      const sessionData = await sessionResp.json();
+      if (sessionResp.ok && sessionData.session) {
+        setSystemStats(prev => ({ ...prev, activeSessions: 1 }));
+      }
+    } catch (error) {
+      console.error("Failed to fetch system stats:", error);
+    }
+  };
+
+  const handleStudentSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchRollNo.trim()) return;
+
+    setIsSearching(true);
+    setSearchResult(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/students/search?rollNumber=${encodeURIComponent(searchRollNo.trim())}`);
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setSearchResult(data.student);
       } else {
         setSearchResult(null);
       }
+    } catch (error) {
+      console.error("Error searching student:", error);
+      setSearchResult(null);
+    } finally {
       setIsSearching(false);
-    }, 500);
+    }
   };
 
   return (
@@ -141,6 +164,74 @@ export default function PrincipalDashboard() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+        {/* Analytics Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+          {/* Main Chart */}
+          <Card className="lg:col-span-2 border-0 shadow-xl backdrop-blur-xl bg-white/90 dark:bg-black/40 relative overflow-hidden group transition-all duration-500 hover:shadow-2xl">
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white/30 to-blue-50/50 dark:from-indigo-900/20 dark:via-gray-800/30 dark:to-blue-900/20"></div>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2 text-gray-900 dark:text-white">
+                <BarChart className="w-6 h-6 text-indigo-600" />
+                <span>Branch-wise Attendance Performance</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <ReChartsBar data={[
+                  { name: "CSE", attendance: 85 },
+                  { name: "ECE", attendance: 78 },
+                  { name: "EEE", attendance: 72 },
+                  { name: "MECH", attendance: 65 },
+                  { name: "CIVIL", attendance: 60 },
+                  { name: "IT", attendance: 88 },
+                ]}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                  <YAxis axisLine={false} tickLine={false} />
+                  <Tooltip 
+                    cursor={{fill: 'rgba(99, 102, 241, 0.1)'}}
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)' }}
+                  />
+                  <Bar dataKey="attendance" radius={[6, 6, 0, 0]}>
+                    {[85, 78, 72, 65, 60, 88].map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#6366F1' : '#8B5CF6'} />
+                    ))}
+                  </Bar>
+                </ReChartsBar>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Activity Pulse */}
+          <Card className="border-0 shadow-xl backdrop-blur-xl bg-white/90 dark:bg-black/40 relative overflow-hidden group transition-all duration-500 hover:shadow-2xl">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 via-white/30 to-pink-50/50 dark:from-purple-900/20 dark:via-gray-800/30 dark:to-pink-900/20"></div>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2 text-gray-900 dark:text-white">
+                <TrendingUp className="w-6 h-6 text-pink-600" />
+                <span>Recent Activity Pulse</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {[
+                { time: "2 mins ago", text: "New Teacher signup: Dr. Rao", icon: Users, color: "text-blue-500" },
+                { time: "15 mins ago", text: "Attendance started: CSE Section 2", icon: Clock, color: "text-green-500" },
+                { time: "45 mins ago", text: "Session closed: ECE Section 1", icon: CheckCircle, color: "text-purple-500" },
+                { time: "1 hour ago", text: "Student registered: Roll 2024102", icon: GraduationCap, color: "text-orange-500" }
+              ].map((item, idx) => (
+                <div key={idx} className="flex items-start space-x-3 p-2 rounded-lg hover:bg-white/50 dark:hover:bg-black/20 transition-colors">
+                  <div className={`mt-1 p-1.5 rounded-md bg-white dark:bg-gray-800 shadow-sm ${item.color}`}>
+                    <item.icon className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{item.text}</p>
+                    <p className="text-xs text-gray-500">{item.time}</p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
         {/* System Overview Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card className="border-0 shadow-xl backdrop-blur-xl bg-white/90 dark:bg-black/40 relative overflow-hidden group transition-all duration-500 hover:shadow-2xl hover:-translate-y-0.5">

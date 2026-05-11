@@ -54,6 +54,7 @@ const App = () => (
               }
             />
             <Route path="/student-qr-scan" element={<StudentQRScan />} />
+            <Route path="/scanner" element={<StudentQRScan />} />
             <Route path="/scan/from-email" element={<EmailScanLanding />} />
             <Route path="/api-test" element={<APITest />} />
             <Route path="/email-test" element={<EmailTest />} />

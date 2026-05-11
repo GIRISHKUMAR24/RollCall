@@ -559,14 +559,6 @@ export async function handleManualAttendanceOverride(
       return;
     }
 
-    if (session.finalizedAt) {
-      res.status(400).json({
-        error: "Session finalized",
-        message: "Cannot modify attendance for a finalized session",
-      });
-      return;
-    }
-
     const existingRecord = await attendanceCol.findOne({ sessionId, rollNumber });
 
     if (!existingRecord) {
@@ -607,6 +599,8 @@ export async function handleManualAttendanceOverride(
         }
       );
     }
+    
+    console.log(`[Manual Override] RollNumber: ${rollNumber}, Old Status: ${existingRecord?.status || 'None'}, New Status: ${status}, Teacher: ${teacherEmail}, DB Update: Success`);
 
     res.status(200).json({
       success: true,

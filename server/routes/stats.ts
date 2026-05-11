@@ -8,10 +8,13 @@ export async function handleDatabaseStats(req: Request, res: Response): Promise<
     const teachersCollection = getCollection('teachers');
     const principalsCollection = getCollection('principals');
     
-    const [studentsCount, teachersCount, principalsCount] = await Promise.all([
+    const attendanceCollection = getCollection('attendance');
+    
+    const [studentsCount, teachersCount, principalsCount, attendanceCount] = await Promise.all([
       studentsCollection.estimatedDocumentCount(),
       teachersCollection.estimatedDocumentCount(),
-      principalsCollection.estimatedDocumentCount()
+      principalsCollection.estimatedDocumentCount(),
+      attendanceCollection.estimatedDocumentCount()
     ]);
     
     // Get sample data (without passwords) from each collection
@@ -45,6 +48,9 @@ export async function handleDatabaseStats(req: Request, res: Response): Promise<
         principals: {
           count: principalsCount,
           sampleData: samplePrincipals
+        },
+        attendance: {
+          count: attendanceCount
         }
       },
       totalUsers: studentsCount + teachersCount + principalsCount,

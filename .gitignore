@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 .config/
-!.env
+.env
 
 # SSL Certificates (self-signed, generated locally — do not commit)
 certs/

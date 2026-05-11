@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ExternalLink, Smartphone } from "lucide-react";
+import { ExternalLink, Smartphone, AlertTriangle } from "lucide-react";
 
-// Helper to detect In-App Browsers
+// Helper to detect In-App Browsers (conservative — avoid false-positives on Android Chrome)
 const isInAppBrowser = (): boolean => {
     if (typeof window === "undefined" || typeof navigator === "undefined") return false;
 
@@ -12,13 +12,19 @@ const isInAppBrowser = (): boolean => {
     const host = window.location.hostname.toLowerCase();
 
     return (
-        ua.includes("wv") ||                 // Android WebView
-        (ua.includes("version/") && ua.includes("mobile")) || // iOS In-App
-        ua.includes("gsa") ||                // Google app
-        ua.includes("gmail") ||              // Gmail in-app
-        ua.includes("outlook") ||            // Outlook in-app
-        ua.includes("fbav") ||               // Facebook in-app
-        ua.includes("instagram") ||          // Instagram in-app
+        // Android WebView: must have both 'wv' flag AND 'android'
+        (ua.includes("android") && ua.includes("; wv)")) ||
+        // Google Search App
+        ua.includes("gsa/") ||
+        // Gmail in-app (explicit keyword)
+        ua.includes("gmail") ||
+        // Outlook in-app
+        ua.includes("outlook") ||
+        // Facebook in-app
+        ua.includes("fbav") ||
+        // Instagram in-app
+        ua.includes("instagram") ||
+        // Preview environments
         host.endsWith(".bolt.new") ||
         host.includes("antigravity")
     );
@@ -28,31 +34,97 @@ export default function EmailScanLanding() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [inApp, setInApp] = useState(false);
+    // 'redirecting' | 'timeout' | 'no-token'
+    const [status, setStatus] = useState<"redirecting" | "timeout" | "no-token">("redirecting");
 
     useEffect(() => {
-        // Check environment on mount
+        const token = searchParams.get("token");
+        const sessionId = searchParams.get("sessionId");
+
+        // No token — go home immediately
+        if (!token) {
+            setStatus("no-token");
+            setTimeout(() => navigate("/"), 3000);
+            return;
+        }
+
+        // Check for in-app browser FIRST
         if (isInAppBrowser()) {
             setInApp(true);
-        } else {
-            // If normal browser, redirect immediately to the actual scan page
-            const token = searchParams.get("token");
-            const sessionId = searchParams.get("sessionId");
-            if (token) {
-                let url = `/student-qr-scan?token=${token}`;
-                if (sessionId) url += `&sessionId=${sessionId}`;
-                navigate(url, { replace: true });
-            } else {
-                navigate("/");
-            }
+            setStatus("redirecting"); // won't be shown — inApp UI takes over
+            return;
         }
+
+        // Normal browser: redirect to scanner
+        let url = `/student-qr-scan?token=${token}`;
+        if (sessionId) url += `&sessionId=${sessionId}`;
+        navigate(url, { replace: true });
+
+        // Safety net: if navigate() somehow doesn't fire within 5 s, show error
+        const timer = setTimeout(() => {
+            setStatus("timeout");
+        }, 5000);
+
+        return () => clearTimeout(timer);
     }, [navigate, searchParams]);
 
     if (!inApp) {
+        if (status === "no-token") {
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+                    <Card className="w-full max-w-md shadow-xl border-0">
+                        <CardContent className="p-8 text-center">
+                            <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+                            <h2 className="text-xl font-bold text-gray-900 mb-2">Invalid Link</h2>
+                            <p className="text-gray-600 mb-4">
+                                This attendance link is missing required data. Please open the link exactly as sent in your email.
+                            </p>
+                            <p className="text-sm text-gray-400">Redirecting to login in 3 seconds…</p>
+                        </CardContent>
+                    </Card>
+                </div>
+            );
+        }
+
+        if (status === "timeout") {
+            const token = searchParams.get("token");
+            const sessionId = searchParams.get("sessionId");
+            let url = `/student-qr-scan?token=${token}`;
+            if (sessionId) url += `&sessionId=${sessionId}`;
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+                    <Card className="w-full max-w-md shadow-xl border-0">
+                        <CardContent className="p-8 text-center">
+                            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                            <h2 className="text-xl font-bold text-gray-900 mb-2">Could Not Connect</h2>
+                            <p className="text-gray-600 mb-2">
+                                The page could not reach the server. Make sure your mobile and the server laptop are on the <strong>same WiFi network</strong>.
+                            </p>
+                            <p className="text-xs text-gray-400 mb-6">
+                                If the server IP changed, ask your teacher to resend the QR email.
+                            </p>
+                            <Button
+                                className="w-full mb-2"
+                                onClick={() => window.location.assign(url)}
+                            >
+                                Retry Now
+                            </Button>
+                            <Button variant="outline" className="w-full" onClick={() => window.location.assign("/")}>
+                                Go to Login
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            );
+        }
+
+        // status === 'redirecting' — show brief spinner while React Router navigates
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Redirecting to attendance scanner...</p>
+                    <p className="text-gray-600">Opening attendance scanner…</p>
+                    <p className="text-xs text-gray-400 mt-2">Make sure you are on the same WiFi as your school's server.</p>
                 </div>
             </div>
         );

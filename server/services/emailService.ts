@@ -23,6 +23,8 @@ class EmailService {
   private transporter: nodemailer.Transporter | null = null;
   private emailQueue: EmailQueue[] = [];
   private isProcessing = false;
+  // Use a stable JWT secret so QR tokens remain valid after hot-reloads / restarts.
+  // Set JWT_SECRET in .env for production. The fallback is used for local dev.
   private readonly JWT_SECRET =
     process.env.JWT_SECRET || "attendancehub-secret-key-2024";
   private readonly RATE_LIMIT_DELAY = 100; // 10 emails per second (1000ms / 10 = 100ms)
@@ -32,41 +34,88 @@ class EmailService {
     this.initializeTransporter();
   }
 
-  private getLocalIpAddress(): string {
+  public getBaseUrl(): string {
+    const linkMode = process.env.DEVELOPMENT_LINK_MODE || "wifi";
+    const envUrl = process.env.APP_BASE_URL;
+
+    // Mode: Explicit Localhost
+    if (linkMode === "localhost") {
+      const baseUrl = envUrl || "http://localhost:3000";
+      console.log(`🏠 [EmailService] Mode: LOCALHOST (Trusted development)`);
+      console.log(`🔗 [EmailService] Base URL: ${baseUrl}`);
+      return baseUrl;
+    }
+
+    // Allow override via APP_BASE_URL environment variable.
+    // Accept any non-localhost, non-empty value (including explicit 192.168.x.x or 10.x.x.x).
+    if (envUrl && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
+      console.log(`🌐 [EmailService] Mode: WIFI (Manual override)`);
+      console.log(`🔗 [EmailService] Base URL: ${envUrl}`);
+      return envUrl;
+    }
+
+    if (envUrl) {
+      console.warn(
+        `⚠️  [EmailService] APP_BASE_URL is set to '${envUrl}' which uses localhost/127.0.0.1. ` +
+        `Falling back to auto-detect. For trusted localhost links, set DEVELOPMENT_LINK_MODE=localhost.`
+      );
+    }
+
+    // Auto-detect local WiFi IPv4 address for LAN access from mobile.
+    // ... rest of the detection logic ...
     const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-      for (const iface of interfaces[name]!) {
-        // Skip internal (non-127.0.0.1) and non-ipv4 addresses
-        if (iface.family === "IPv4" && !iface.internal) {
-          return iface.address;
+    const virtualKeywords = [
+      "vmware", "vmnet", "vbox", "virtualbox", "hyper-v",
+      "loopback", "pseudo", "bluetooth", "tunnel", "tap", "docker",
+      "wi-fi direct", "direct virtual",
+    ];
+    const wifiKeywords = ["wi-fi", "wifi", "wireless", "wlan", "802.11"];
+
+    const candidates: { name: string; ip: string; isNamedWifi: boolean; isWifi: boolean }[] = [];
+
+    for (const devName in interfaces) {
+      const iface = interfaces[devName];
+      if (!iface) continue;
+
+      const lowerName = devName.toLowerCase();
+      if (virtualKeywords.some((kw) => lowerName.includes(kw))) continue;
+
+      const isNamedWifi = lowerName === "wi-fi" || lowerName === "wifi";
+      const isWifi = isNamedWifi || wifiKeywords.some((kw) => lowerName.includes(kw));
+
+      for (const alias of iface) {
+        if (alias.family === "IPv4" && !alias.internal && alias.address !== "127.0.0.1") {
+          candidates.push({ name: devName, ip: alias.address, isNamedWifi, isWifi });
         }
       }
     }
-    return "localhost";
+
+    let localIp = "127.0.0.1";
+    const exactWifi = candidates.filter((c) => c.isNamedWifi);
+    const namedWifi = candidates.filter((c) => c.isWifi);
+    const any192 = candidates.filter((c) => c.ip.startsWith("192.168."));
+
+    if (exactWifi.length > 0) {
+      localIp = exactWifi[exactWifi.length - 1].ip;
+      console.log(`📶 [EmailService] Using physical 'Wi-Fi' adapter: ${exactWifi[exactWifi.length - 1].name}`);
+    } else if (namedWifi.length > 0) {
+      localIp = namedWifi[namedWifi.length - 1].ip;
+      console.log(`📶 [EmailService] Using WiFi-named adapter: ${namedWifi[namedWifi.length - 1].name}`);
+    } else if (any192.length > 0) {
+      localIp = any192[any192.length - 1].ip;
+      console.log(`📶 [EmailService] Using 192.168 adapter: ${any192[any192.length - 1].name}`);
+    } else if (candidates.length > 0) {
+      localIp = candidates[candidates.length - 1].ip;
+      console.log(`📶 [EmailService] Using fallback adapter: ${candidates[candidates.length - 1].name}`);
+    }
+
+    const baseUrl = `http://${localIp}:3000`;
+    console.log(`🌐 [EmailService] Mode: WIFI (Auto-detect)`);
+    console.log(`✅ [EmailService] Selected local IP : ${localIp}`);
+    console.log(`🔗 [EmailService] Base URL : ${baseUrl}`);
+    return baseUrl;
   }
 
-  private getBaseUrl(): string {
-    // Priority 1: User-defined public base URL (from tunnel)
-    if (process.env.PUBLIC_BASE_URL) {
-      return process.env.PUBLIC_BASE_URL;
-    }
-
-    // Priority 2: Legacy app base URL
-    if (process.env.APP_BASE_URL) {
-      return process.env.APP_BASE_URL;
-    }
-
-    if (process.env.NODE_ENV === "production") {
-      return "https://your-app-domain.com";
-    }
-
-    const ip = this.getLocalIpAddress();
-    const port = process.env.PORT || "4000";
-    const url = `http://${ip}:${port}`;
-
-    console.warn(`⚠️ Using local IP for Base URL: ${url}. External access may fail.`);
-    return url;
-  }
 
   private ensureInitialized() {
     if (!this.transporter) {
@@ -86,43 +135,44 @@ class EmailService {
     }
 
     try {
-      // Trim any whitespace from credentials
+      // 1. Clean credentials (remove whitespace/spaces which are common when copying App Passwords)
       const trimmedUser = gmailUser.trim();
       const trimmedPass = gmailPass.replace(/\s+/g, "");
 
-      console.log("📧 Configuring Gmail transporter for:", trimmedUser);
-
+      console.log("📧 Configuring Gmail SMTP transporter for:", trimmedUser);
+      
+      // 2. Configure transporter using the 'gmail' service shortcut
+      // This automatically handles host (smtp.gmail.com), port (465), and secure (true)
       this.transporter = nodemailer.createTransport({
         service: "gmail",
         auth: {
           user: trimmedUser,
-          pass: trimmedPass,
+          pass: trimmedPass, // This MUST be a 16-character App Password if 2FA is on
         },
       });
 
-      console.log("📧 Email transporter created for:", trimmedUser);
-
-      // Verify connection with improved error handling
+      // 3. Verify connection immediately
+      console.log("📧 Verifying SMTP connection...");
       this.transporter.verify((error, success) => {
         if (error) {
           const err = error as any;
-          console.error("❌ EMAIL SERVICE: Gmail authentication failed");
-          console.error("   Error Code:", err.code);
-          console.error("   Error Message:", err.message);
-          if (err.message && err.message.includes("535")) {
-            console.error("   ⚠️ SMTP Error 535: Invalid credentials");
-            console.error("   Solutions:");
-            console.error("   1. Verify GMAIL_USER is correct (should be your Gmail address)");
-            console.error("   2. Use Gmail App Password, NOT regular password");
-            console.error("   3. Enable 2-factor authentication on your Gmail account");
-            console.error("   4. Generate a new App Password at: https://myaccount.google.com/apppasswords");
+          console.error("❌ EMAIL SERVICE: Gmail SMTP authentication failed");
+          console.error(`   Error details: [${err.code}] ${err.message}`);
+          
+          if (err.message && (err.message.includes("535") || err.message.includes("Invalid login"))) {
+            console.error("\n   ⚠️  AUTHENTICATION TROUBLESHOOTING:");
+            console.error("   1. Is 2-Factor Authentication (2FA) ENABLED on your Google Account?");
+            console.error("   2. Are you using an 'App Password'? (Ordinary passwords will NOT work)");
+            console.error("   3. Did you generate the App Password at: https://myaccount.google.com/apppasswords");
+            console.error("   4. Does GMAIL_USER match the account that generated the App Password?");
+            console.error("   5. After updating .env, did you RESTART the server?");
           }
         } else {
-          console.log("✅ EMAIL SERVICE: Successfully authenticated with Gmail");
+          console.log("✅ EMAIL SERVICE: Successfully authenticated with Gmail SMTP");
         }
       });
     } catch (error: any) {
-      console.error("❌ EMAIL SERVICE: Failed to create transporter:", error.message);
+      console.error("❌ EMAIL SERVICE: Failed to create transporter object:", error.message);
     }
   }
 
@@ -153,7 +203,7 @@ class EmailService {
     baseUrl: string,
     sessionId: string,
   ): Promise<string> {
-    const qrUrl = `${baseUrl}/scan/from-email?token=${qrToken}&sessionId=${sessionId}`;
+    const qrUrl = `${baseUrl}/scan/from-email?token=${qrToken}`;
 
     const qrCodeBuffer = await QRCode.toBuffer(qrUrl, {
       width: 200,
@@ -174,7 +224,7 @@ class EmailService {
     appUrl: string,
     qrToken: string,
   ): string {
-    const directLink = `${appUrl}/scan/from-email?token=${qrToken}&sessionId=${data.sessionId}`;
+    const directLink = `${appUrl}/scan/from-email?token=${qrToken}`;
     const expiryTime = parseInt(process.env.QR_EXPIRY_SECONDS || "3600");
 
     return `
@@ -402,6 +452,7 @@ class EmailService {
         };
 
         console.log(`  📤 Sending to ${student.email}...`);
+        console.log(`  🔗 Exact Scanner URL: ${baseUrl}/scan/from-email?token=${qrToken}`);
         const info = await this.transporter.sendMail(mailOptions);
         console.log(`  ✅ Email sent to ${student.email}. ID: ${info.messageId}`);
         queuedEmails++;

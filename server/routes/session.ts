@@ -108,9 +108,9 @@ export async function handleStartSession(
             subject,
             classroomCenter: { lat, lng },
             radius: geofenceRadius,
-            startTime,
-            endTime,
-            active: true,
+            startTime: null,        // Set when teacher activates scanning
+            endTime: null,          // Set when teacher activates scanning
+            active: false,          // Students see "waiting" until teacher activates
             createdAt: new Date(),
         };
 
@@ -186,6 +186,9 @@ export async function handleGetActiveSession(
             return;
         }
 
+        const now = new Date();
+        const isExpired = session.endTime ? now > new Date(session.endTime) : false;
+
         res.status(200).json({
             success: true,
             session: {
@@ -194,7 +197,9 @@ export async function handleGetActiveSession(
                 radius: session.radius ?? GEOFENCE_RADIUS_METERS,
                 startTime: session.startTime,
                 endTime: session.endTime,
-                active: session.active === true && !session.finalizedAt,
+                // active = true only if the DB flag is true, not finalized, and not expired
+                active: session.active === true && !session.finalizedAt && !isExpired,
+                expired: isExpired,
                 branch: session.branch,
                 section: session.section,
                 subject: session.subject,

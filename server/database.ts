@@ -1,7 +1,12 @@
+import "dotenv/config";
 import { MongoClient, Db, Collection } from "mongodb";
 
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://girishkumargundapu:1Fxm79M7ADeiVYtU@cluster0.tvttzmg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const MONGODB_URI = process.env.MONGODB_URI;
 const DATABASE_NAME = process.env.DATABASE_NAME || "attendanceDB";
+
+if (!MONGODB_URI) {
+  throw new Error("❌ MONGODB_URI is not defined in the environment variables (.env file)");
+}
 
 let client: MongoClient;
 let db: Db;
@@ -156,23 +161,28 @@ export async function initializeDatabase(): Promise<void> {
     await connectToDatabase();
 
     // Ensure collections exist and create indexes
-    const collections = ["students", "teachers", "principals"];
+    const collections = ["students", "teachers", "principals", "sessions", "attendance"];
 
     for (const collectionName of collections) {
       const collection = getCollection(collectionName);
 
-      // Create unique index on email for each collection
-      try {
-        await collection.createIndex({ email: 1 }, { unique: true });
-        console.log(
-          `✅ Created unique index on email for ${collectionName} collection`,
-        );
-      } catch (error: any) {
-        // Index might already exist, that's fine
-        if (error.code !== 11000) {
-          console.log(
-            `���️  Index on email already exists for ${collectionName} collection`,
-          );
+      // Create unique index on email for user collections
+      if (["students", "teachers", "principals"].includes(collectionName)) {
+        try {
+          await collection.createIndex({ email: 1 }, { unique: true });
+          console.log(`✅ Created unique index on email for ${collectionName}`);
+        } catch (error: any) {
+          // Index might already exist
+        }
+      }
+
+      // Create index on sessionId for attendance
+      if (collectionName === "attendance") {
+        try {
+          await collection.createIndex({ sessionId: 1 });
+          console.log(`✅ Created index on sessionId for attendance collection`);
+        } catch (error) {
+          // Index might already exist
         }
       }
     }

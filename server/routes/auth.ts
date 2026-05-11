@@ -146,10 +146,11 @@ export async function handleSignup(req: Request, res: Response): Promise<void> {
 
     // Return success response
     res.status(201).json({
-      message: "Signup successful",
+      success: true,
+      message: `${role.charAt(0).toUpperCase() + role.slice(1)} account created`,
       collection: collectionName,
       userId: result.insertedId.toString(),
-    } as SignupResponse);
+    });
   } catch (error: any) {
     console.error("❌ Signup error:", error);
 

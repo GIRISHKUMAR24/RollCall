@@ -33,11 +33,14 @@ export async function handleEmailDiagnostics(req: Request, res: Response): Promi
     // Test 2: Direct SMTP Connection
     if (process.env.GMAIL_USER && process.env.GMAIL_PASS) {
       try {
+        const trimmedUser = process.env.GMAIL_USER.trim();
+        const trimmedPass = process.env.GMAIL_PASS.replace(/\s+/g, "");
+
         const testTransporter = nodemailer.createTransport({
           service: 'gmail',
           auth: {
-            user: process.env.GMAIL_USER,
-            pass: process.env.GMAIL_PASS
+            user: trimmedUser,
+            pass: trimmedPass
           }
         });
 
@@ -88,11 +91,14 @@ export async function handleEmailDiagnostics(req: Request, res: Response): Promi
     const testEmail = req.body.testEmail || 'girishkumargundapu@gmail.com';
     if (testEmail && process.env.GMAIL_USER && process.env.GMAIL_PASS) {
       try {
+        const trimmedUser = process.env.GMAIL_USER.trim();
+        const trimmedPass = process.env.GMAIL_PASS.replace(/\s+/g, "");
+
         const testTransporter = nodemailer.createTransport({
           service: 'gmail',
           auth: {
-            user: process.env.GMAIL_USER,
-            pass: process.env.GMAIL_PASS
+            user: trimmedUser,
+            pass: trimmedPass
           }
         });
 

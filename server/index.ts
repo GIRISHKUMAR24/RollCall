@@ -1,4 +1,5 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+dotenv.config({ override: true });
 import express from "express";
 import cors from "cors";
 import type { CorsOptions } from "cors";
@@ -18,65 +19,31 @@ import { handleRecordAttendance, handleFinalizeAttendance, handleManualAttendanc
 import { handleGetAttendanceStatus } from "./routes/attendance-status";
 import { handleGetAttendanceSummary } from "./routes/attendance-summary";
 import { handleStartSession, handleGetActiveSession, handleActivateSession } from "./routes/session";
+import os from "os";
+
 
 /**
  * Build a dynamic CORS policy that:
  *  - Always allows localhost (any port) for local development
- *  - Always allows ngrok and Cloudflare tunnel domains
  *  - Allows any extra origins listed in ALLOWED_ORIGINS (comma-separated)
  *  - Does NOT require hardcoded IPs or URLs
  */
 function buildCorsOptions(): CorsOptions {
-  const extraOrigins = (process.env.ALLOWED_ORIGINS || "")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-
   return {
     origin: (origin, callback) => {
       // Allow requests with no origin (e.g., mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
 
-      // Always allow localhost (any port)
-      if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) {
+      // Always allow localhost
+      if (/^https?:\/\/localhost(:\d+)?$/.test(origin) || /^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) {
         return callback(null, true);
       }
 
-      // Always allow 127.0.0.1 (any port)
-      if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) {
-        return callback(null, true);
-      }
-
-      // Allow ngrok tunnels (v2: *.ngrok.io, v3: *.ngrok-free.app / *.ngrok.app)
-      if (
-        /\.ngrok(-free)?\.app$/.test(origin) ||
-        /\.ngrok\.io$/.test(origin) ||
-        /\.ngrok\.app$/.test(origin)
-      ) {
-        return callback(null, true);
-      }
-
-      // Allow Cloudflare tunnels
-      if (/\.trycloudflare\.com$/.test(origin) || /\.cloudflareaccess\.com$/.test(origin)) {
-        return callback(null, true);
-      }
-
-      // Allow local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x) for LAN HTTPS
-      if (/^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(origin)) {
-        return callback(null, true);
-      }
-
-      // Allow extra origins from environment variable
-      if (extraOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      // In development, allow everything
+      // In development, allow everything else for convenience
       if (process.env.NODE_ENV === "development") {
         return callback(null, true);
       }
 
-      console.warn(`[CORS] Blocked origin: ${origin}`);
       callback(new Error(`CORS policy: origin '${origin}' not allowed`));
     },
     credentials: true,
@@ -101,20 +68,9 @@ export function createServer() {
     next();
   });
 
-  // Initialize database connection background tasks
+  // Initialize database connection
   initializeDatabase().catch((error) => {
     console.error("❌ Failed to initialize database:", error);
-  });
-
-  // Serverless Cold Start Fix: Ensure DB connection is active before processing requests
-  app.use(async (req, res, next) => {
-    try {
-      await connectToDatabase();
-      next();
-    } catch (error: any) {
-      console.error("❌ Database Connection Middleware Error:", error.message);
-      res.status(500).json({ error: "Internal Server Error", message: "Database connection failed" });
-    }
   });
 
   // Health check routes
@@ -123,6 +79,51 @@ export function createServer() {
     const ping = process.env.PING_MESSAGE ?? "ping";
     res.json({ message: ping });
   });
+
+  // Local IP diagnostic endpoint — verify which IP is used for email scanner links
+  app.get("/api/local-ip", (_req, res) => {
+    const networkInterfaces = os.networkInterfaces();
+    const virtualKeywords = ["vmware", "vmnet", "vbox", "virtualbox", "hyper-v",
+                             "loopback", "pseudo", "bluetooth", "tunnel", "tap", "docker"];
+    const wifiKeywords = ["wi-fi", "wifi", "wireless", "wlan", "802.11"];
+    const candidates: { name: string; ip: string; isWifi: boolean }[] = [];
+
+    for (const devName in networkInterfaces) {
+      const iface = networkInterfaces[devName];
+      if (!iface) continue;
+      const lowerName = devName.toLowerCase();
+      if (virtualKeywords.some((kw) => lowerName.includes(kw))) continue;
+      const isWifi = wifiKeywords.some((kw) => lowerName.includes(kw));
+      for (const alias of iface) {
+        if (alias.family === "IPv4" && !alias.internal && alias.address !== "127.0.0.1") {
+          candidates.push({ name: devName, ip: alias.address, isWifi });
+        }
+      }
+    }
+
+    let localIp = "127.0.0.1";
+    const namedWifi192 = candidates.filter((c) => c.isWifi && c.ip.startsWith("192.168."));
+    const any192 = candidates.filter((c) => c.ip.startsWith("192.168."));
+    if (namedWifi192.length > 0) {
+      localIp = namedWifi192[namedWifi192.length - 1].ip;
+    } else if (any192.length > 0) {
+      localIp = any192[any192.length - 1].ip;
+    } else if (candidates.length > 0) {
+      localIp = candidates[candidates.length - 1].ip;
+    }
+
+    const scannerUrl = `http://${localIp}:3000`;
+    console.log(`🌐 [/api/local-ip] Selected IP: ${localIp} | Scanner URL: ${scannerUrl}`);
+    res.json({
+      localIp,
+      scannerUrl,
+      emailLinksWillUse: `${scannerUrl}/scan/from-email?token=<JWT>`,
+      allCandidates: candidates,
+      note: "Ensure mobile and laptop are on the same WiFi network for these links to work",
+      envAppBaseUrl: process.env.APP_BASE_URL || "(not set — auto-detect active)",
+    });
+  });
+
 
   // Authentication routes
   app.post("/api/signup", handleSignup);
@@ -149,8 +150,10 @@ export function createServer() {
   app.get("/api/students", handleGetStudentsByClass);
   app.get("/api/students/search", handleSearchStudentByRollNo);
   app.post("/api/attendance/record", handleRecordAttendance);
+  app.post("/api/attendance", handleRecordAttendance); // Alias
   app.post("/api/attendance/override", handleManualAttendanceOverride);
   app.post("/api/attendance/finalize", handleFinalizeAttendance);
+  app.get("/api/attendance", handleGetAttendanceStatus); // Alias
   app.get("/api/attendance/status", handleGetAttendanceStatus);
   app.get("/api/attendance/summary", handleGetAttendanceSummary);
 

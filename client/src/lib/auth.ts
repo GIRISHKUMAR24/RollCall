@@ -48,16 +48,16 @@ export const authAPI = {
     }
 
     if (!response.ok) {
+      const responseText = await response.text();
       let errorData;
       try {
-        errorData = await response.json();
+        errorData = JSON.parse(responseText);
       } catch (jsonErr) {
-        const errorText = await response.text();
-        console.error("[authAPI.login] Failed to parse response error JSON. Response body:", errorText);
-        throw new Error(`Login failed (Invalid JSON response). Status: ${response.status}`);
+        console.error("[authAPI.login] Failed to parse response error JSON. Response body:", responseText);
+        throw new Error(`Login failed (Status: ${response.status}). ${responseText.substring(0, 100)}`);
       }
       console.error("[authAPI.login] Server Error:", errorData);
-      throw new Error(errorData.message || "Login failed");
+      throw new Error(errorData.message || errorData.error || "Login failed");
     }
 
     return response.json();
@@ -82,16 +82,16 @@ export const authAPI = {
     }
 
     if (!response.ok) {
+      const responseText = await response.text();
       let errorData;
       try {
-        errorData = await response.json();
+        errorData = JSON.parse(responseText);
       } catch (jsonErr) {
-        const errorText = await response.text();
-        console.error("[authAPI.signup] Failed to parse response error JSON. Response body:", errorText);
-        throw new Error(`Signup failed (Invalid JSON response). Status: ${response.status}`);
+        console.error("[authAPI.signup] Failed to parse response error JSON. Response body:", responseText);
+        throw new Error(`Signup failed (Status: ${response.status}). ${responseText.substring(0, 100)}`);
       }
       console.error("[authAPI.signup] Server Error:", errorData);
-      throw new Error(errorData.message || "Signup failed");
+      throw new Error(errorData.message || errorData.error || "Signup failed");
     }
 
     return response.json();
