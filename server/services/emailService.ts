@@ -35,8 +35,21 @@ class EmailService {
   }
 
   public getBaseUrl(): string {
-    const linkMode = process.env.DEVELOPMENT_LINK_MODE || "wifi";
+    const isProduction = process.env.NODE_ENV === "production" || process.env.RENDER;
     const envUrl = process.env.APP_BASE_URL;
+
+    // In production (Render/Netlify), we MUST have an APP_BASE_URL (the frontend URL)
+    if (isProduction) {
+      if (envUrl) {
+        console.log(`🌐 [EmailService] Production Mode: Using APP_BASE_URL: ${envUrl}`);
+        return envUrl;
+      }
+      // Fallback for production if APP_BASE_URL is missing
+      console.warn("⚠️ [EmailService] Production mode but APP_BASE_URL is not set. Using localhost:3000 fallback.");
+      return "http://localhost:3000";
+    }
+
+    const linkMode = process.env.DEVELOPMENT_LINK_MODE || "wifi";
 
     // Mode: Explicit Localhost
     if (linkMode === "localhost") {
@@ -47,22 +60,13 @@ class EmailService {
     }
 
     // Allow override via APP_BASE_URL environment variable.
-    // Accept any non-localhost, non-empty value (including explicit 192.168.x.x or 10.x.x.x).
     if (envUrl && !envUrl.includes("localhost") && !envUrl.includes("127.0.0.1")) {
       console.log(`🌐 [EmailService] Mode: WIFI (Manual override)`);
       console.log(`🔗 [EmailService] Base URL: ${envUrl}`);
       return envUrl;
     }
 
-    if (envUrl) {
-      console.warn(
-        `⚠️  [EmailService] APP_BASE_URL is set to '${envUrl}' which uses localhost/127.0.0.1. ` +
-        `Falling back to auto-detect. For trusted localhost links, set DEVELOPMENT_LINK_MODE=localhost.`
-      );
-    }
-
-    // Auto-detect local WiFi IPv4 address for LAN access from mobile.
-    // ... rest of the detection logic ...
+    // Auto-detect local WiFi IPv4 address ...
     const interfaces = os.networkInterfaces();
     const virtualKeywords = [
       "vmware", "vmnet", "vbox", "virtualbox", "hyper-v",

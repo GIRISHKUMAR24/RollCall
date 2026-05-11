@@ -39,6 +39,12 @@ function buildCorsOptions(): CorsOptions {
         return callback(null, true);
       }
 
+      // Allow origins from environment variable
+      const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : [];
+      if (allowedOrigins.some(ao => origin.toLowerCase() === ao.toLowerCase().trim())) {
+        return callback(null, true);
+      }
+
       // In development, allow everything else for convenience
       if (process.env.NODE_ENV === "development") {
         return callback(null, true);
@@ -48,7 +54,8 @@ function buildCorsOptions(): CorsOptions {
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    exposedHeaders: ["set-cookie"],
   };
 }
 
