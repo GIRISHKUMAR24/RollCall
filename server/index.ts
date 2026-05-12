@@ -168,6 +168,8 @@ export function createServer() {
   // Authentication routes
   app.post("/api/signup", handleSignup);
   app.post("/api/login", handleLogin);
+  app.post("/api/auth/signup", handleSignup); // Alias
+  app.post("/api/auth/login", handleLogin);   // Alias
 
   // Email routes
   app.post("/api/email/send-attendance", handleSendAttendanceEmails);
