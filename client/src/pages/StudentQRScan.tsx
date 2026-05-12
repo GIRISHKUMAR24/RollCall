@@ -22,7 +22,12 @@ import {
   BookOpen,
   AlertTriangle,
   Info,
+  Zap,
+  Activity,
+  Navigation,
 } from "lucide-react";
+import { classifyAttendance, haversineDistance } from "../../../shared/geofence-utils";
+import { GPSReading } from "../../../shared/types";
 
 // Helper to detect In-App Browsers and Preview Environments
 const isInAppBrowser = (): boolean => {
@@ -86,6 +91,13 @@ export default function StudentQRScan() {
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<any>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+
+  // Advanced Stabilization State
+  const [isStabilizing, setIsStabilizing] = useState(false);
+  const [readings, setReadings] = useState<GPSReading[]>([]);
+  const [stabilizationProgress, setStabilizationProgress] = useState(0);
+  const [stabilityScore, setStabilityScore] = useState(0);
+  const [confidence, setConfidence] = useState<"High" | "Medium" | "Low">("Low");
 
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -192,119 +204,126 @@ export default function StudentQRScan() {
     }
   }, [searchParams, navigate]);
 
-  // 2. Request Location Handler (Manual Trigger Only)
-  const handleRetryLocation = (retryCount = 0) => {
-
-    // A. Check Secure Context
-    // NOTE: We intentionally allow HTTP on local network (192.168.x.x) since
-    // we removed the self-signed SSL cert. The check is only needed for
-    // obviously wrong cases like http://localhost on a remote-origin context.
-    if (
-      !window.isSecureContext &&
-      window.location.hostname !== "localhost" &&
-      window.location.hostname !== "127.0.0.1" &&
-      !window.location.hostname.startsWith("192.168.")
-    ) {
-      setLocationState("error");
-      setLocationErrorMsg(
-        "⚠️ You opened this page on HTTP from a non-local host. " +
-        "GPS may be blocked by your browser. " +
-        "Please open the link sent in your email exactly as-is."
-      );
-      return;
-    }
-
-    // B. Check for In-App Browser or Preview Env
-    if (isInAppBrowser()) {
-      setLocationState("inapp");
-      setLocationErrorMsg(
-        "Location cannot be accessed inside this in-app browser. Please open the page in Chrome to continue."
-      );
-      return;
-    }
-
-    // C. Check Browser Support
+  // 2. Start Location Stabilization (Production Grade)
+  const handleStartLocationStabilization = () => {
     if (!navigator.geolocation) {
       setLocationState("unsupported");
-      setLocationErrorMsg("This browser does not support location. Please use Chrome or Brave.");
+      setLocationErrorMsg("This browser does not support location.");
       return;
     }
 
-    // D. Start Checking
+    if (isInAppBrowser()) {
+      setLocationState("inapp");
+      setLocationErrorMsg("Location cannot be accessed inside this in-app browser.");
+      return;
+    }
+
     setLocationState("checking");
+    setIsStabilizing(true);
+    setReadings([]);
+    setStabilizationProgress(0);
     setLocationErrorMsg("");
 
-    const geoOptions = {
-      enableHighAccuracy: true,
-      timeout: 30000, // Increased to 30 seconds
-      maximumAge: 10000 // Allow cached positions up to 10s old
+    const REQUIRED_READINGS = 8;
+    const TIMEOUT_MS = 25000; // 25 seconds max for stabilization
+    let watchId: number | null = null;
+    let collectedReadings: GPSReading[] = [];
+
+    const cleanup = () => {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      setIsStabilizing(false);
     };
 
-    console.log("📍 [StudentQRScan] Requesting Geolocation with options:", geoOptions);
+    const processReadings = (finalReadings: GPSReading[]) => {
+      if (finalReadings.length === 0) {
+        setLocationState("error");
+        setLocationErrorMsg("No stable GPS readings obtained.");
+        return;
+      }
 
-    navigator.geolocation.getCurrentPosition(
+      // 1. Sort by accuracy (best first)
+      const sorted = [...finalReadings].sort((a, b) => a.accuracy - b.accuracy);
+      
+      // 2. Filter outliers: Ignore the most inaccurate 25% if we have enough readings
+      const countToKeep = Math.max(1, Math.ceil(sorted.length * 0.75));
+      const filtered = sorted.slice(0, countToKeep);
+
+      // 3. Calculate Average
+      const avgLat = filtered.reduce((sum, r) => sum + r.lat, 0) / filtered.length;
+      const avgLng = filtered.reduce((sum, r) => sum + r.lng, 0) / filtered.length;
+      const avgAcc = filtered.reduce((sum, r) => sum + r.accuracy, 0) / filtered.length;
+
+      // 4. Calculate Stability (Standard Deviation of distance from average)
+      const deviations = filtered.map(r => haversineDistance(r.lat, r.lng, avgLat, avgLng));
+      const avgDev = deviations.reduce((sum, d) => sum + d, 0) / filtered.length;
+      
+      // Stability Score: 1.0 (perfect) to 0.0 (unstable)
+      // If average deviation is < 5m, it's very stable. > 30m is unstable.
+      const score = Math.max(0, Math.min(1, 1 - (avgDev / 30)));
+      setStabilityScore(score);
+
+      // 5. Update State
+      setCurrentLocation({ lat: avgLat, lng: avgLng });
+      setStudentAccuracy(avgAcc);
+      setLocationState("allowed");
+
+      // Calculate confidence for UI
+      const result = classifyAttendance(10, avgAcc, score); // Distance 10 is dummy here
+      setConfidence(result.confidence);
+
+      console.log(`✅ [GPS Stabilized] Readings: ${finalReadings.length}, Avg Acc: ${avgAcc.toFixed(1)}m, Stability: ${(score * 100).toFixed(0)}%`);
+    };
+
+    watchId = navigator.geolocation.watchPosition(
       (position) => {
-        // Success
-        console.log("✅ [StudentQRScan] Geolocation Success:", position);
-        const { latitude, longitude, accuracy } = position.coords;
-        console.log(`📍 Coordinates: ${latitude}, ${longitude} (Accuracy: ${accuracy}m)`);
+        const newReading: GPSReading = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          timestamp: Date.now()
+        };
+        
+        collectedReadings.push(newReading);
+        setReadings([...collectedReadings]);
+        const progress = Math.min(100, Math.round((collectedReadings.length / REQUIRED_READINGS) * 100));
+        setStabilizationProgress(progress);
 
-        setCurrentLocation({ lat: latitude, lng: longitude });
-        setStudentAccuracy(accuracy);
-        setLocationState("allowed");
-        setLocationErrorMsg("");
-
-        // Retry if accuracy is poor (>50m) and we haven't retried too many times
-        if (accuracy > 50 && retryCount < 3) {
-          console.warn(`⚠️ Accuracy ${accuracy}m > 50m, retrying (${retryCount + 1}/3)...`);
-          // We still keep the current result, but try to get a better one
-          setTimeout(() => handleRetryLocation(retryCount + 1), 2000);
+        if (collectedReadings.length >= REQUIRED_READINGS) {
+          cleanup();
+          processReadings(collectedReadings);
         }
       },
       (error) => {
-        // Error Handling
-        console.error("❌ [StudentQRScan] Geolocation Error:", error);
-        setCurrentLocation(null);
-
-
-        if (error.code === error.PERMISSION_DENIED) {
-          setLocationState("denied");
-          setLocationErrorMsg(
-            "Location permission denied. Please allow location access in your browser settings."
-          );
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          setLocationState("error");
-          setLocationErrorMsg("Location unavailable. Please check your GPS is on.");
-        } else if (error.code === error.TIMEOUT) {
-          console.warn("⚠️ Geolocation timed out. Retrying with low accuracy...");
-          // Fallback: Try again with low accuracy
-          if (retryCount === 0) {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                // Success on fallback
-                console.log("✅ [Fallback] Low Accuracy Success:", pos);
-                setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                setStudentAccuracy(pos.coords.accuracy);
-                setLocationState("allowed");
-                setLocationErrorMsg("");
-              },
-              (err) => {
-                setLocationState("error");
-                setLocationErrorMsg("Location timed out. Please check your internet/GPS.");
-              },
-              { enableHighAccuracy: false, timeout: 30000, maximumAge: 60000 }
-            );
-          } else {
-            setLocationState("error");
-            setLocationErrorMsg("Location request timed out.");
-          }
+        console.error("GPS Watch Error:", error);
+        if (collectedReadings.length > 0) {
+          // If we have some readings but hit an error, process what we have
+          cleanup();
+          processReadings(collectedReadings);
         } else {
+          cleanup();
           setLocationState("error");
-          setLocationErrorMsg(`Unable to fetch your location. Error: ${error.message}`);
+          setLocationErrorMsg(`GPS Error: ${error.message}`);
         }
       },
-      geoOptions
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
     );
+
+    // Timeout fallback
+    setTimeout(() => {
+      if (collectedReadings.length > 0 && collectedReadings.length < REQUIRED_READINGS) {
+        console.warn("Stabilization timeout: Processing partial readings");
+        cleanup();
+        processReadings(collectedReadings);
+      } else if (collectedReadings.length === 0) {
+        cleanup();
+        setLocationState("error");
+        setLocationErrorMsg("Location timeout. Please try again.");
+      }
+    }, TIMEOUT_MS);
   };
 
   // 3. Submit Attendance
@@ -328,6 +347,9 @@ export default function StudentQRScan() {
           subject: studentData?.subject,
           studentLocation: currentLocation,
           studentAccuracy,
+          stabilityScore,
+          confidence,
+          readingCount: readings.length,
         }),
       });
       const data = await resp.json();
@@ -519,37 +541,47 @@ export default function StudentQRScan() {
 
                 {/* State: Allowed (Success) */}
                 {locationState === "allowed" && currentLocation && (
-                  <div className={`mt-2 p-3 rounded-lg border ${(studentAccuracy || 0) > 100
-                    ? "bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-700"
-                    : "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-700"
-                    }`}>
-                    <p className={`text-sm ${(studentAccuracy || 0) > 100
-                      ? "text-orange-700 dark:text-orange-300"
-                      : "text-green-700 dark:text-green-300"
+                    <div className={`mt-2 p-3 rounded-lg border ${confidence === "Low"
+                        ? "bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-700"
+                        : confidence === "Medium"
+                          ? "bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-700"
+                          : "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-700"
                       }`}>
-                      {(studentAccuracy || 0) > 100 ? "⚠️ Low Accuracy" : "✓ Location detected"}
-                    </p>
-                    <p className={`text-xs ${(studentAccuracy || 0) > 100
-                      ? "text-orange-600 dark:text-orange-400"
-                      : "text-green-600 dark:text-green-400"
-                      }`}>
-                      {currentLocation.lat.toFixed(6)},{" "}
-                      {currentLocation.lng.toFixed(6)}
-                      {studentAccuracy != null && (
-                        <> • acc ±{Math.round(studentAccuracy)}m</>
-                      )}
-                    </p>
-                    <p className="text-xs mt-1 text-orange-600 dark:text-orange-400">
-                      Accuracy is low (&gt;100m). You can still scan, but ensure you are close to the class.
-                    </p>
-                  </div>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className={`text-sm font-bold ${confidence === "Low"
+                            ? "text-orange-700 dark:text-orange-300"
+                            : confidence === "Medium"
+                              ? "text-blue-700 dark:text-blue-300"
+                              : "text-green-700 dark:text-green-300"
+                          }`}>
+                          {confidence === "Low" ? "⚠️ Low Confidence" : confidence === "Medium" ? "🛡️ Medium Confidence" : "✅ High Confidence"}
+                        </p>
+                        <Badge variant="outline" className="text-[10px] h-4">
+                          {Math.round(stabilityScore * 100)}% Stable
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        {currentLocation.lat.toFixed(6)}, {currentLocation.lng.toFixed(6)} • acc ±{Math.round(studentAccuracy || 0)}m
+                      </p>
+                      <p className="text-[10px] mt-1 text-gray-500 dark:text-gray-400 italic">
+                        Stabilized over {readings.length} readings
+                      </p>
+                    </div>
                 )}
 
-                {/* State: Checking */}
+                {/* State: Checking / Stabilizing */}
                 {locationState === "checking" && (
-                  <div className="mt-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-700">
-                    <p className="text-sm text-yellow-700 dark:text-yellow-300 flex items-center">
-                      <span className="animate-spin mr-2">⏳</span> Getting your location...
+                  <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center">
+                        <Activity className="w-4 h-4 mr-2 animate-pulse" />
+                        Stabilizing GPS...
+                      </p>
+                      <span className="text-xs font-mono text-blue-600">{stabilizationProgress}%</span>
+                    </div>
+                    <Progress value={stabilizationProgress} className="h-1.5 mb-2 bg-blue-100 dark:bg-blue-900/50" />
+                    <p className="text-[10px] text-blue-600 dark:text-blue-400">
+                      Collecting multiple readings for maximum precision ({readings.length}/8)
                     </p>
                   </div>
                 )}
@@ -563,10 +595,11 @@ export default function StudentQRScan() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleRetryLocation()}
-                      className="w-full"
+                      onClick={() => handleStartLocationStabilization()}
+                      className="w-full bg-blue-500 text-white hover:bg-blue-600 border-none shadow-md"
                     >
-                      📍 Get Location
+                      <Navigation className="w-4 h-4 mr-2" />
+                      Enable Smart GPS
                     </Button>
                   </div>
                 )}
@@ -583,9 +616,9 @@ export default function StudentQRScan() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleRetryLocation()}
+                          onClick={() => handleStartLocationStabilization()}
                         >
-                          Retry location
+                          Retry stabilization
                         </Button>
                         <span className="text-xs text-red-600 dark:text-red-300">
                           Tip: Check browser permissions

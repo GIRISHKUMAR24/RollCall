@@ -1,6 +1,6 @@
-import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { getCollection } from "../database";
+import { classifyAttendance, haversineDistance } from "../../shared/geofence-utils";
 
 const JWT_SECRET = process.env.JWT_SECRET || "attendancehub-secret-key-2024";
 
@@ -80,10 +80,20 @@ export async function handleRecordAttendance(
   try {
     console.log("📥 [Attendance] Received Record Request:", JSON.stringify(req.body, null, 2));
 
-    const { token, studentLocation, studentAccuracy } = req.body as {
+    const { 
+      token, 
+      studentLocation, 
+      studentAccuracy, 
+      stabilityScore, 
+      confidence: studentConfidence, 
+      readingCount 
+    } = req.body as {
       token?: string;
       studentLocation?: { lat: number; lng: number };
       studentAccuracy?: number | null;
+      stabilityScore?: number;
+      confidence?: string;
+      readingCount?: number;
     };
 
     if (!token) {
@@ -225,13 +235,15 @@ export async function handleRecordAttendance(
       classroomCenter.lat,
       classroomCenter.lng,
     );
-    withinGeofence = distance <= geofenceRadius;
+    
+    // Use the smart classification logic
+    const validation = classifyAttendance(
+      distance, 
+      studentAccuracy || 30, 
+      stabilityScore || 0.5
+    );
 
-    octagonVertices = buildOctagonVertices(classroomCenter.lat, classroomCenter.lng, geofenceRadius);
-    withinOctagon = pointInPolygon(studentLocation.lat, studentLocation.lng, octagonVertices);
-
-
-    const newStatus = withinGeofence ? "Present" : "Absent";
+    const newStatus = validation.status === "Needs Verification" ? "Needs Verification" : (validation.status === "Present" ? "Present" : "Absent");
 
     console.log(`📍 Geofence Check:
       Student : ${studentName} (${rollNumber})
@@ -259,6 +271,9 @@ export async function handleRecordAttendance(
         finalStatus = "Present";
         action = "update";
         console.log(`🆙 Upgrading ${rollNumber} from Absent → Present.`);
+      } else if (existing.status === "Needs Verification" && newStatus === "Present") {
+        finalStatus = "Present";
+        action = "update";
       } else {
         finalStatus = newStatus;
         action = "update";
@@ -277,6 +292,13 @@ export async function handleRecordAttendance(
       locationValid: withinGeofence,
       status: finalStatus,
       distance: Math.round(distance),
+      accuracy: studentAccuracy,
+      confidence: validation.confidence,
+      classification: validation.classification,
+      reason: validation.reason,
+      badge: validation.badge,
+      stabilityScore: stabilityScore || 0,
+      readingCount: readingCount || 1,
       classroomCenter,           // Store classroom center for audit trail
       teacherLocation: classroomCenter, // Alias for backward compat
       geofenceRadius,
@@ -300,8 +322,10 @@ export async function handleRecordAttendance(
         studentLocation,
         distance: parseFloat(distance.toFixed(2)),
         radius: geofenceRadius,
-        withinCircle: withinGeofence,
-        withinOctagon,
+        withinCircle: validation.status === "Present",
+        classification: validation.classification,
+        confidence: validation.confidence,
+        reason: validation.reason,
         status: finalStatus,
         locationSource,
         octagonVertices, // Included so frontend debug panel can draw the polygon

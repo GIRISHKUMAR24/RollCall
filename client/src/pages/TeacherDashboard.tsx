@@ -110,6 +110,11 @@ export default function TeacherDashboard() {
         status: string;
         scanTime: string;
         geofenceStatus: "inside" | "outside" | "not_scanned";
+        distance?: number;
+        accuracy?: number;
+        confidence?: string;
+        badge?: string;
+        reason?: string;
       }
     >
   >({});
@@ -332,6 +337,11 @@ export default function TeacherDashboard() {
       scanTime: a?.scanTime || "-",
       location: null,
       geofenceStatus: a?.geofenceStatus || "not_scanned",
+      distance: a?.distance,
+      accuracy: a?.accuracy,
+      confidence: a?.confidence,
+      badge: a?.badge,
+      reason: a?.reason,
     };
   });
 
@@ -379,6 +389,11 @@ export default function TeacherDashboard() {
               status: record.status || "Absent",
               scanTime: timestamp,
               geofenceStatus: record.locationValid ? "inside" : "outside",
+              distance: record.distance,
+              accuracy: record.accuracy,
+              confidence: record.confidence,
+              badge: record.badge,
+              reason: record.reason,
             };
           }
           return updated;
@@ -452,6 +467,11 @@ export default function TeacherDashboard() {
           status: string;
           scanTime: string;
           geofenceStatus: "inside" | "outside" | "not_scanned";
+          distance?: number;
+          accuracy?: number;
+          confidence?: string;
+          badge?: string;
+          reason?: string;
         }
       > = {};
       for (const item of data.records || []) {
@@ -459,6 +479,11 @@ export default function TeacherDashboard() {
           status: item.status,
           scanTime: new Date(item.timestamp).toLocaleTimeString(),
           geofenceStatus: item.locationValid ? "inside" : "outside",
+          distance: item.distance,
+          accuracy: item.accuracy,
+          confidence: item.confidence,
+          badge: item.badge,
+          reason: item.reason,
         };
       }
       setAttendanceMap(map);
@@ -1140,6 +1165,8 @@ Solutions:
                   filteredStudents.map((student) => {
                     const isPresent = student.status === "Present";
                     const isAbsent = student.status === "Absent";
+                    const needsVerification = student.status === "Needs Verification";
+                    const confidenceColor = student.confidence === "High" ? "text-green-600" : student.confidence === "Medium" ? "text-blue-600" : "text-orange-600";
 
                     return (
                       <div
@@ -1160,6 +1187,23 @@ Solutions:
                             <p className="text-sm text-gray-500 dark:text-gray-400">
                               Roll No: {student.rollNo}
                             </p>
+                            {student.status !== "Not Scanned" && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  student.badge === "green" ? "bg-green-100 text-green-700" :
+                                  student.badge === "yellow" ? "bg-yellow-100 text-yellow-700" :
+                                  "bg-red-100 text-red-700"
+                                }`}>
+                                  {student.badge === "green" ? "NEAR" : student.badge === "yellow" ? "VERIFY" : "SUSPICIOUS"}
+                                </span>
+                                <span className="text-[10px] text-gray-500">
+                                  {student.distance}m (±{student.accuracy}m)
+                                </span>
+                                <span className={`text-[10px] font-medium ${confidenceColor}`}>
+                                  {student.confidence} Conf.
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center space-x-3">
@@ -1173,7 +1217,9 @@ Solutions:
                                   ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
                                   : isAbsent
                                     ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
-                                    : "bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-300"
+                                    : needsVerification
+                                      ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300"
+                                      : "bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-300"
                               }
                             >
                               {student.status}
@@ -1184,6 +1230,8 @@ Solutions:
                               <CheckCircle className="w-5 h-5 text-green-600" />
                             ) : isAbsent ? (
                               <XCircle className="w-5 h-5 text-red-600" />
+                            ) : needsVerification ? (
+                              <AlertTriangle className="w-5 h-5 text-yellow-600 animate-pulse" />
                             ) : (
                               <Clock className="w-5 h-5 text-gray-400" />
                             )}
@@ -1205,7 +1253,7 @@ Solutions:
                                 {overrideLoading === student.rollNo && (
                                   <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                                 )}
-                                {isPresent ? "Mark Absent" : "Mark Present"}
+                                {needsVerification ? "Verify Presence" : (isPresent ? "Mark Absent" : "Mark Present")}
                               </Button>
                             )}
                           </div>

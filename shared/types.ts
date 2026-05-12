@@ -45,3 +45,30 @@ export interface LoginResponse {
   user: User;
   token: string;
 }
+
+export interface GPSReading {
+  lat: number;
+  lng: number;
+  accuracy: number;
+  timestamp: number;
+}
+
+export interface AttendanceRecord {
+  sessionId: string;
+  rollNumber: string;
+  name: string;
+  branch: string;
+  section: string;
+  subject: string;
+  timestamp: Date;
+  location: { lat: number; lng: number } | null;
+  locationValid: boolean;
+  status: "Present" | "Absent" | "Needs Verification";
+  distance: number;
+  accuracy: number;
+  confidence: "High" | "Medium" | "Low";
+  classification: "VERY_NEAR" | "NEAR" | "VERIFY" | "SUSPICIOUS";
+  reason: string;
+  readingCount?: number;
+  stabilityScore?: number;
+}
