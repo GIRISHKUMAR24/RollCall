@@ -39,6 +39,11 @@ function buildCorsOptions(): CorsOptions {
         return callback(null, true);
       }
 
+      // Allow Netlify domains
+      if (origin.endsWith(".netlify.app") || origin.includes(".netlify.app")) {
+        return callback(null, true);
+      }
+
       // Allow origins from environment variable
       const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : [];
       if (allowedOrigins.some(ao => origin.toLowerCase() === ao.toLowerCase().trim())) {
@@ -46,7 +51,14 @@ function buildCorsOptions(): CorsOptions {
       }
 
       // In development, allow everything else for convenience
-      if (process.env.NODE_ENV === "development") {
+      if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") {
+        return callback(null, true);
+      }
+
+      // Fallback for Netlify preview environments or same-origin requests
+      // If we are on Netlify and origin is present, we generally want to allow it
+      // if it's the site itself.
+      if (process.env.NETLIFY === "true") {
         return callback(null, true);
       }
 

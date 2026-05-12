@@ -7,8 +7,6 @@
  * In production (Netlify), APIs are served as serverless functions via the /.netlify/functions/api path.
  */
 
-export const API_BASE = import.meta.env.PROD 
-  ? "/.netlify/functions/api"
-  : "/api";
+export const API_BASE = "/api";
 
 console.log(`📡 [API Config] Base URL: ${API_BASE} (Mode: ${import.meta.env.MODE})`);

@@ -653,11 +653,10 @@ export default function StudentQRScan() {
                       <Button
                         onClick={handleScanQR}
                         disabled={!canScan || scanning}
-                        className={`w-full size-lg ${
-                          canScan
+                        className={`w-full size-lg ${canScan
                             ? "bg-green-600 hover:bg-green-700"
                             : "bg-gray-400 cursor-not-allowed hover:bg-gray-400 opacity-70"
-                        }`}
+                          }`}
                         size="lg"
                       >
                         <QrCode className="w-5 h-5 mr-2" />
