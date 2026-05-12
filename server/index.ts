@@ -81,6 +81,27 @@ export function createServer() {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+  // Path standardization middleware for Netlify and direct calls
+  app.use((req, res, next) => {
+    let url = req.url;
+    
+    // 1. Strip Netlify function prefix if present
+    if (url.startsWith("/.netlify/functions/api")) {
+      url = url.replace("/.netlify/functions/api", "");
+    }
+    
+    // 2. Ensure /api prefix (but don't duplicate it)
+    if (!url.startsWith("/api")) {
+      url = "/api" + (url.startsWith("/") ? "" : "/") + url;
+    }
+    
+    // 3. Fix potential double slashes like /api//login
+    url = url.replace(/\/+/g, "/");
+    
+    req.url = url;
+    next();
+  });
+
   // Debug logging
   app.use((req, res, next) => {
     console.log(`[API Request] ${req.method} ${req.url}`);
