@@ -99,6 +99,17 @@ export default function StudentQRScan() {
   const [stabilizationProgress, setStabilizationProgress] = useState(0);
   const [stabilityScore, setStabilityScore] = useState(0);
   const [confidence, setConfidence] = useState<"High" | "Medium" | "Low">("Low");
+  const [validationSnapshot, setValidationSnapshot] = useState<{
+    location: { lat: number; lng: number };
+    accuracy: number;
+    stabilityScore: number;
+    confidence: "High" | "Medium" | "Low";
+    distance: number;
+    classification: string;
+    reason: string;
+    readingCount: number;
+    timestamp: number;
+  } | null>(null);
 
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionExpired, setSessionExpired] = useState(false);
@@ -259,20 +270,45 @@ export default function StudentQRScan() {
       const avgDev = deviations.reduce((sum, d) => sum + d, 0) / filtered.length;
       
       // Stability Score: 1.0 (perfect) to 0.0 (unstable)
-      // If average deviation is < 5m, it's very stable. > 30m is unstable.
       const score = Math.max(0, Math.min(1, 1 - (avgDev / 30)));
       setStabilityScore(score);
 
-      // 5. Update State
+      // 5. Calculate Final Distance and Classification (Snapshot)
+      const center = studentData?.teacherLocation;
+      let finalDistance = 0;
+      let classification = "UNKNOWN";
+      let reason = "N/A";
+      let resultConfidence: "High" | "Medium" | "Low" = "Low";
+
+      if (center) {
+        finalDistance = haversineDistance(avgLat, avgLng, center.lat, center.lng);
+        const validation = classifyAttendance(finalDistance, avgAcc, score);
+        classification = validation.classification;
+        reason = validation.reason;
+        resultConfidence = validation.confidence;
+      }
+
+      // 6. Lock Snapshot
+      const snapshot = {
+        location: { lat: avgLat, lng: avgLng },
+        accuracy: avgAcc,
+        stabilityScore: score,
+        confidence: resultConfidence,
+        distance: Math.round(finalDistance),
+        classification,
+        reason,
+        readingCount: finalReadings.length,
+        timestamp: Date.now()
+      };
+      
+      setValidationSnapshot(snapshot);
+      console.log("🔒 [GPS Snapshot] Created stable verification snapshot:", JSON.stringify(snapshot, null, 2));
+
+      // 7. Update Legacy State
       setCurrentLocation({ lat: avgLat, lng: avgLng });
       setStudentAccuracy(avgAcc);
+      setConfidence(resultConfidence);
       setLocationState("allowed");
-
-      // Calculate confidence for UI
-      const result = classifyAttendance(10, avgAcc, score); // Distance 10 is dummy here
-      setConfidence(result.confidence);
-
-      console.log(`✅ [GPS Stabilized] Readings: ${finalReadings.length}, Avg Acc: ${avgAcc.toFixed(1)}m, Stability: ${(score * 100).toFixed(0)}%`);
     };
 
     watchId = navigator.geolocation.watchPosition(
@@ -329,18 +365,27 @@ export default function StudentQRScan() {
 
   // 3. Submit Attendance
   const submitAttendance = async () => {
-    // NOTE: Teacher location is no longer required from the QR token.
-    // The backend fetches classroomCenter from the MongoDB session document.
-    // The student only needs to provide their own GPS coordinates.
-
     setScanning(true);
     setScanError(null);
 
-    try {
-      const resp = await fetch(`${API_BASE}/attendance/record`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+    console.log(`🚀 [Attendance] Submitting attendance... (Session: ${studentData?.sessionId})`);
+    
+    // Use the locked snapshot if it exists, otherwise fall back to current live GPS
+    const payload = validationSnapshot 
+      ? {
+          token: studentData?.token || "",
+          sessionId: studentData?.sessionId,
+          branch: studentData?.branch,
+          section: studentData?.section,
+          subject: studentData?.subject,
+          studentLocation: validationSnapshot.location,
+          studentAccuracy: validationSnapshot.accuracy,
+          stabilityScore: validationSnapshot.stabilityScore,
+          confidence: validationSnapshot.confidence,
+          readingCount: validationSnapshot.readingCount,
+          validationSource: "locked_snapshot",
+        }
+      : {
           token: studentData?.token || "",
           sessionId: studentData?.sessionId,
           branch: studentData?.branch,
@@ -351,9 +396,23 @@ export default function StudentQRScan() {
           stabilityScore,
           confidence,
           readingCount: readings.length,
-        }),
+          validationSource: "live_gps",
+        };
+
+    if (validationSnapshot) {
+      console.log("🔄 [Attendance] Snapshot reused for submission:", JSON.stringify(validationSnapshot, null, 2));
+    } else {
+      console.log("📡 [Attendance] Using live GPS for submission (No snapshot found)");
+    }
+
+    try {
+      const resp = await fetch(`${API_BASE}/attendance/record`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
       const data = await resp.json();
+      console.log("📥 [Attendance] Backend response received:", JSON.stringify(data, null, 2));
 
       if (!resp.ok || !data.success) {
         throw new Error(data?.message || "Failed to record attendance");
@@ -365,16 +424,17 @@ export default function StudentQRScan() {
         distance: data.data.distance,
         withinGeofence: data.data.locationValid,
         status: data.data.status,
-        studentLocation: currentLocation,
+        studentLocation: payload.studentLocation,
         timestamp: data.data.timestamp,
         debug: data.debug,
       });
     } catch (err: any) {
       const msg: string = String(err?.message || err) || "Scan failed";
+      console.error("❌ [Attendance] Submission failed:", msg);
 
       if (msg.includes("Location accuracy too low")) {
         setScanError("⚠️ Location accuracy is too low. Please wait a moment and try again.");
-        handleRetryLocation(); // Try to get better location
+        // We don't trigger re-stabilization here if we have a snapshot
       } else {
         setScanError(
           /expired|Invalid/i.test(msg)
@@ -557,16 +617,33 @@ export default function StudentQRScan() {
                           }`}>
                           {confidence === "Low" ? "⚠️ Low Confidence" : confidence === "Medium" ? "🛡️ Medium Confidence" : "✅ High Confidence"}
                         </p>
-                        <Badge variant="outline" className="text-[10px] h-4">
+                        <Badge variant="outline" className="text-[10px] h-4 bg-white/50 dark:bg-black/20">
                           {Math.round(stabilityScore * 100)}% Stable
                         </Badge>
                       </div>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
-                        {currentLocation.lat.toFixed(6)}, {currentLocation.lng.toFixed(6)} • acc ±{Math.round(studentAccuracy || 0)}m
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-xs text-gray-600 dark:text-gray-400">
+                          {currentLocation.lat.toFixed(6)}, {currentLocation.lng.toFixed(6)}
+                        </p>
+                        {validationSnapshot && (
+                          <span className="text-[10px] text-green-600 dark:text-green-400 font-bold flex items-center">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            SNAPSHOT LOCKED
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                        Accuracy ±{Math.round(studentAccuracy || 0)}m • {readings.length} readings
                       </p>
-                      <p className="text-[10px] mt-1 text-gray-500 dark:text-gray-400 italic">
-                        Stabilized over {readings.length} readings
-                      </p>
+                      {validationSnapshot && (
+                        <div className="mt-2 pt-2 border-t border-gray-200/50 dark:border-gray-700/50">
+                           <div className="flex items-center justify-between">
+                             <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{validationSnapshot.classification}</span>
+                             <span className="text-xs text-gray-500">{validationSnapshot.distance}m away</span>
+                           </div>
+                           <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">{validationSnapshot.reason}</p>
+                        </div>
+                      )}
                     </div>
                 )}
 
