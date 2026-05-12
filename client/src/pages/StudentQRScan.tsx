@@ -322,6 +322,10 @@ export default function StudentQRScan() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token: studentData?.token || "",
+          sessionId: studentData?.sessionId,
+          branch: studentData?.branch,
+          section: studentData?.section,
+          subject: studentData?.subject,
           studentLocation: currentLocation,
           studentAccuracy,
         }),
