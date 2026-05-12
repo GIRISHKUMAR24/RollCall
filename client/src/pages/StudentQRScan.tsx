@@ -808,133 +808,70 @@ export default function StudentQRScan() {
                 </div>
               )}
 
-              {scanResult && (
-                <div className="space-y-4">
-                  <div
-                    className={`p-4 rounded-lg border-2 ${scanResult.withinGeofence
-                      ? "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-700"
-                      : "bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-700"
-                      }`}
-                  >
-                    <div className="flex items-center space-x-2 mb-2">
-                      {scanResult.withinGeofence ? (
-                        <CheckCircle className="w-6 h-6 text-green-600" />
-                      ) : (
-                        <XCircle className="w-6 h-6 text-orange-600" />
-                      )}
-                      <span
-                        className={`font-bold text-lg ${scanResult.withinGeofence
-                          ? "text-green-700 dark:text-green-300"
-                          : "text-orange-700 dark:text-orange-300"
-                          }`}
-                      >
-                        {scanResult.status}
-                      </span>
-                    </div>
+              {scanResult && (() => {
+                const status = (scanResult.status || "").toLowerCase();
+                const isPresent = status === "present" || status === "near";
+                const isVerify = status === "needs verification" || status === "verify";
+                
+                const themeClass = isPresent 
+                  ? "bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-700 text-green-700 dark:text-green-300" 
+                  : isVerify 
+                    ? "bg-yellow-50 border-yellow-200 dark:bg-yellow-900/20 dark:border-yellow-700 text-yellow-700 dark:text-yellow-300"
+                    : "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-700 text-red-700 dark:text-red-300";
+                
+                const Icon = isPresent ? CheckCircle : isVerify ? AlertTriangle : XCircle;
+                const iconClass = isPresent ? "text-green-600" : isVerify ? "text-yellow-600" : "text-red-600";
 
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center space-x-2">
-                        <Clock className="w-4 h-4" />
-                        <span>Scanned at: {scanResult.scanTime}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="w-4 h-4" />
-                        <span>
-                          Distance from classroom: {scanResult.distance}m
+                return (
+                  <div className="space-y-4">
+                    <div className={`p-4 rounded-lg border-2 ${themeClass}`}>
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Icon className={`w-6 h-6 ${iconClass}`} />
+                        <span className="font-bold text-lg">
+                          {scanResult.status}
                         </span>
                       </div>
+
+                      <div className="space-y-2 text-sm opacity-90">
+                        <div className="flex items-center space-x-2">
+                          <Clock className="w-4 h-4" />
+                          <span>Scanned at: {scanResult.scanTime}</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <MapPin className="w-4 h-4" />
+                          <span>
+                            Distance: {scanResult.distance}m
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Debug Info Box */}
+                      {scanResult.debug && (
+                        <div className="mt-4 p-3 bg-white/50 dark:bg-black/20 rounded text-[10px] font-mono text-left space-y-1 border border-current/20">
+                          <p className="font-bold border-b border-current/10 pb-1 mb-1 uppercase tracking-wider opacity-60">
+                            Backend Debug Info
+                          </p>
+                          <p>Distance: {scanResult.debug.distance}m</p>
+                          <p>Radius: {scanResult.debug.radius}m</p>
+                          <p>Classification: {scanResult.debug.classification || "N/A"}</p>
+                          <p>Confidence: {scanResult.debug.confidence || "N/A"}</p>
+                          <p>Reason: {scanResult.debug.reason || "N/A"}</p>
+                          <p>Source: {scanResult.debug.locationSource}</p>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Debug Info Box */}
-                    {scanResult.debug && (
-                      <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono text-left space-y-1 border border-gray-300 dark:border-gray-700">
-                        <p className="font-bold border-b border-gray-300 dark:border-gray-600 pb-1 mb-1">
-                          🛠️ Geofence Debug
-                        </p>
-                        <p>
-                          <span className="font-semibold">Teacher (Session):</span>{" "}
-                          {scanResult.debug.classroomCenter
-                            ? `${scanResult.debug.classroomCenter.lat.toFixed(6)}, ${scanResult.debug.classroomCenter.lng.toFixed(6)}`
-                            : scanResult.debug.classLocation
-                              ? `${scanResult.debug.classLocation.lat?.toFixed(6)}, ${scanResult.debug.classLocation.lng?.toFixed(6)}`
-                              : "N/A"}
-                        </p>
-                        <p>
-                          <span className="font-semibold">Student:</span>{" "}
-                          {scanResult.debug.studentLocation
-                            ? `${scanResult.debug.studentLocation.lat.toFixed(6)}, ${scanResult.debug.studentLocation.lng.toFixed(6)}`
-                            : "N/A"}
-                        </p>
-                        <p>
-                          <span className="font-semibold">GPS Accuracy:</span>{" "}
-                          ±{Math.round(studentAccuracy || 0)}m
-                        </p>
-                        <p>
-                          <span className="font-semibold">Distance:</span>{" "}
-                          {typeof scanResult.debug.distance === "number"
-                            ? `${scanResult.debug.distance.toFixed(2)} m`
-                            : `${scanResult.distance} m`}
-                        </p>
-                        <p>
-                          <span className="font-semibold">Radius:</span>{" "}
-                          {scanResult.debug.radius ?? 30}m
-                        </p>
-                        <p>
-                          <span className="font-semibold">Circle Check:</span>{" "}
-                          <span className={scanResult.debug.withinCircle ?? scanResult.withinGeofence ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
-                            {(scanResult.debug.withinCircle ?? scanResult.withinGeofence) ? "✅ Inside" : "❌ Outside"}
-                          </span>
-                        </p>
-                        {scanResult.debug.withinOctagon !== undefined && (
-                          <p>
-                            <span className="font-semibold">Octagon Check:</span>{" "}
-                            <span className={scanResult.debug.withinOctagon ? "text-green-600 font-bold" : "text-red-600 font-bold"}>
-                              {scanResult.debug.withinOctagon ? "✅ Inside" : "❌ Outside"}
-                            </span>
-                          </p>
-                        )}
-                        <p>
-                          <span className="font-semibold">Location Source:</span>{" "}
-                          <span className="text-green-600 dark:text-green-400 font-semibold">
-                            {scanResult.debug.locationSource === "teacher_gps" || scanResult.debug.locationSource === "session_db"
-                              ? "📍 Teacher GPS (Session DB)"
-                              : scanResult.debug.locationSource
-                                ? `⚠️ ${scanResult.debug.locationSource}`
-                                : "📍 Teacher GPS"}
-                          </span>
-                        </p>
-                        <p>
-                          <span className="font-semibold">Status Decision:</span>{" "}
-                          <span
-                            className={
-                              scanResult.debug.status === "Present"
-                                ? "text-green-600 font-bold"
-                                : "text-red-600 font-bold"
-                            }
-                          >
-                            {scanResult.debug.status}
-                          </span>
-                        </p>
-                      </div>
-                    )}
+                    <div className="text-center pt-2">
+                      <Badge className={themeClass}>
+                        Attendance Recorded
+                      </Badge>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                        You can close this page now
+                      </p>
+                    </div>
                   </div>
-
-                  <div className="text-center">
-                    <Badge
-                      className={
-                        scanResult.withinGeofence
-                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                          : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300"
-                      }
-                    >
-                      Attendance Recorded
-                    </Badge>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                      You can close this page now
-                    </p>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </CardContent>
           </Card>
         </div>

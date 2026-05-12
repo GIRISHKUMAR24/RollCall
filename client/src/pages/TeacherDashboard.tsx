@@ -104,6 +104,7 @@ export default function TeacherDashboard() {
   const [emailPreview, setEmailPreview] = useState<any[]>([]);
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<"ready" | "preparing" | "active" | "expired" | null>(null);
   const [attendanceMap, setAttendanceMap] = useState<
     Record<
       string,
@@ -498,6 +499,38 @@ export default function TeacherDashboard() {
     };
   }, [attendanceStarted, currentSessionId]);
 
+  // Poll for session readiness if in 'preparing' state
+  useEffect(() => {
+    if (sessionStatus !== "preparing" || !currentSessionId) return;
+
+    console.log(`⏳ [Readiness] Starting poll for session: ${currentSessionId}`);
+    let pollCount = 0;
+    const pollInterval = setInterval(async () => {
+      pollCount++;
+      try {
+        const resp = await fetch(`${API_BASE}/session/active?sessionId=${currentSessionId}`);
+        const data = await resp.json();
+        
+        if (data.success && data.session && data.session.status === "ready") {
+          setSessionStatus("ready");
+          console.log(`✅ [Readiness] Session is READY: ${currentSessionId} (Polled ${pollCount} times)`);
+          clearInterval(pollInterval);
+        }
+      } catch (err) {
+        console.error("Readiness poll failed:", err);
+      }
+      
+      // Safety timeout after 30 seconds
+      if (pollCount > 15) {
+        console.warn(`⚠️ [Readiness] Polling timeout for ${currentSessionId}. Forcing ready state.`);
+        setSessionStatus("ready"); 
+        clearInterval(pollInterval);
+      }
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [sessionStatus, currentSessionId]);
+
   // Filter students based on search
   const filteredStudents = mockStudents.filter(
     (student) =>
@@ -576,8 +609,10 @@ export default function TeacherDashboard() {
 
           // Start the attendance timer automatically after sending QRs
           setAttendanceStarted(false);
+          setSessionStatus("preparing");
           setTimeLeft(60);
           setCurrentSessionId(result.sessionId);
+          console.log(`✅ [Session] Created: ${result.sessionId}. Initial state: preparing`);
 
           alert(`✅ SUCCESS: ${result.queuedEmails} QR emails sent!
 
@@ -642,14 +677,19 @@ Solutions:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: currentSessionId }),
       });
+
+      const data = await response.json();
       if (!response.ok) {
-        throw new Error("Failed to activate session");
+        throw new Error(data?.message || "Failed to activate session");
       }
+
       setAttendanceStarted(true);
+      setSessionStatus("active");
       setTimeLeft(60);
-    } catch (error) {
+      console.log(`🚀 [Session] Timer activated for: ${currentSessionId}`);
+    } catch (error: any) {
       console.error("Failed to activate timer:", error);
-      alert("Error starting timer. Please try again.");
+      alert(error.message || "Error starting timer. Please try again.");
     }
   };
 
@@ -967,9 +1007,19 @@ Solutions:
                         <Button
                           onClick={handleActivateTimer}
                           className="w-full bg-green-600 hover:bg-green-700 text-white"
+                          disabled={sessionStatus === "preparing"}
                         >
-                          <Timer className="w-4 h-4 mr-2" />
-                          Start Timer
+                          {sessionStatus === "preparing" ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Preparing session...
+                            </>
+                          ) : (
+                            <>
+                              <Timer className="w-4 h-4 mr-2" />
+                              Start Timer
+                            </>
+                          )}
                         </Button>
                       </div>
                     )}

@@ -137,6 +137,7 @@ export async function handleSendAttendanceEmails(
           startTime: sessionStartTime,
           endTime: sessionEndTime,
           active: false,
+          status: "ready",
           createdAt: new Date(),
         },
       },

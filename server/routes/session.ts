@@ -111,6 +111,7 @@ export async function handleStartSession(
             startTime: null,        // Set when teacher activates scanning
             endTime: null,          // Set when teacher activates scanning
             active: false,          // Students see "waiting" until teacher activates
+            status: "ready",        // Manually started sessions are immediately ready
             createdAt: new Date(),
         };
 
@@ -203,6 +204,7 @@ export async function handleGetActiveSession(
                 branch: session.branch,
                 section: session.section,
                 subject: session.subject,
+                status: session.status || (session.active ? "active" : "ready"),
             },
         });
     } catch (error: any) {
@@ -235,6 +237,23 @@ export async function handleActivateSession(
         }
 
         const sessionsCol = getCollection("sessions");
+        const session = await sessionsCol.findOne({ sessionId });
+
+        if (!session) {
+            res.status(404).json({
+                error: "Not Found",
+                message: "Session not found",
+            });
+            return;
+        }
+
+        if (session.status === "preparing") {
+            res.status(400).json({
+                error: "Session Not Ready",
+                message: "Attendance session is still initializing. Please wait a moment.",
+            });
+            return;
+        }
 
         // Calculate new end time based on current time
         const windowSeconds = parseInt(process.env.ATTENDANCE_WINDOW_SECONDS || "60", 10);
@@ -246,6 +265,7 @@ export async function handleActivateSession(
             {
                 $set: {
                     active: true,
+                    status: "active",
                     startTime,
                     endTime
                 }
